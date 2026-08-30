@@ -31,9 +31,11 @@ Claude is the runtime. It reads the orchestrator + worker skills (markdown) and 
 **Reference adapters shipped:**
 - [`java-maven`](adapters/java-maven/ADAPTER.md) — language/build; Tier-1 (`mvn`/`jdeps`/`javap`) + Tier-2 [`java_ast.py`](adapters/java-maven/scripts/java_ast.py) (source model, heuristic call graph, entry points via `javalang`).
 - [`relational-db`](adapters/relational-db/ADAPTER.md) — `inspect_datastore`; live introspection ([Postgres reference SQL](adapters/relational-db/scripts/postgres_introspect.sql), Oracle/SQL Server/MySQL equivalents) or offline DDL/migration parsing, plus reference-data value resolution.
+- [`service-resolver`](adapters/service-resolver/ADAPTER.md) — `resolve_service_target`; matches a client REST/gRPC call to the serving endpoint (across repos) via the entry-point catalog, OpenAPI ([indexer](adapters/service-resolver/scripts/openapi_index.py)) or `.proto`.
+- [`event-resolver`](adapters/event-resolver/ADAPTER.md) — `resolve_event_target`; re-links async producers to consumer(s) by destination, preserving fan-out, via config-resolved topics and a [correlation helper](adapters/event-resolver/scripts/topic_match.py).
 - [`generic-fallback`](adapters/generic-fallback/ADAPTER.md) — always-on; partial evidence via Read/Grep for any capability with no specialized adapter, with mandatory `⊘ CAPABILITY` gaps.
 
-Still binding to generic-fallback until built: `resolve_service_target` (REST/gRPC), `resolve_event_target` (Kafka), and non-Java language adapters.
+All 12 canonical capabilities now have a specialized adapter for a Java/Maven + relational-DB + REST + event stack. Still binding to generic-fallback: non-Java language adapters and NoSQL/document stores.
 
 ## Prompting
 
@@ -97,4 +99,4 @@ The structured artifacts are the canonical current-state truth; Markdown reports
 Design originates from the Notion page *"Current Behavior Discovery — 8-Skill Architecture & Claude Wiring"*. Keep this repo and that page in sync.
 
 ## Status
-Skills scaffolded + first reference adapters shipped (java-maven, relational-db, generic-fallback). **Next:** cross-cutting resolvers (`resolve_service_target` for REST/gRPC, `resolve_event_target` for Kafka), then additional language adapters (.NET, Node/TS, Python) as boundaries demand. First end-to-end validation run recommended against a representative Java/Maven operation.
+Skills scaffolded + reference adapters shipped: java-maven, relational-db, service-resolver, event-resolver, generic-fallback — full capability coverage for a Java/Maven + relational-DB + REST + event stack. **Next:** additional language adapters (.NET, Node/TS, Python) and NoSQL stores as boundaries demand. First end-to-end validation run recommended against a representative Java/Maven operation.

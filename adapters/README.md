@@ -12,6 +12,8 @@ Adapters are the technology-specific layer behind the [Stack Adapter Contract](.
 |---------|------|-----------|--------------|
 | [java-maven](java-maven/ADAPTER.md) | language / build | Stack Profile language = Java, build = Maven | `resolve_project_structure`, `resolve_dependencies`, `inspect_packaged_artifact`, `discover_entrypoints`, `build_source_model`, `build_call_graph`, `trace_data_state_flow`, `resolve_configuration`, `run_characterization_tests` |
 | [relational-db](relational-db/ADAPTER.md) | data store (cross-cutting) | boundary kind = relational database | `inspect_datastore` |
+| [service-resolver](service-resolver/ADAPTER.md) | integration (cross-cutting) | boundary kind = synchronous service call (REST/gRPC) | `resolve_service_target` |
+| [event-resolver](event-resolver/ADAPTER.md) | integration (cross-cutting) | boundary kind = async message/event | `resolve_event_target` |
 | [generic-fallback](generic-fallback/ADAPTER.md) | fallback | always available; used when no specialized adapter supports a capability | partial: all capabilities, low precision |
 
 ## Binding rules
@@ -28,4 +30,4 @@ Adapters are the technology-specific layer behind the [Stack Adapter Contract](.
 Every capability result returns, where relevant: capability invoked; target identity; version; source location; resolution status; evidence/provenance; evidence level; discovered next targets; explicit limitations; and unsupported/fallback status. See the [contract](../.claude/skills/shared/stack-adapter-contract.md#adapter-output-contract).
 
 ## Not yet implemented
-Cross-cutting infra: `resolve_service_target` (REST/OpenAPI, gRPC), `resolve_event_target` (Kafka and others). Additional languages: .NET, Node/TS, Python. Additional data stores: NoSQL/document, other RDBMS dialects. Until present, these bind to generic-fallback with a recorded capability gap.
+Additional language adapters: .NET, Node/TS, Python (each owning the 8 language/source capabilities for its Stack Profile). Additional data stores: NoSQL/document, other RDBMS dialects as first-class (dialect equivalents are documented inline in relational-db today). Until present, these bind to generic-fallback with a recorded capability gap.
