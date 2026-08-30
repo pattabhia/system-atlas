@@ -90,6 +90,12 @@ python3 scripts/reachability.py --model source-model.json --callgraph callgraph.
 ```
 Uses **resolved + interface-override edges** (Stage B emits `dispatch:"override"` edges so a call to an interface method expands to its concrete implementors), with a **name-based fallback** for unresolved edges — a *sound over-approximation* (never misses a reachable method). Output classifies every project method as reachable / accessor / unreached; the unreached set is a finding (framework-invoked entry points, cross-cutting handlers, or candidate-dead), not silence.
 
+**Branch-completeness** (the meaningful sub-line unit): enumerate branch constructs per method:
+```bash
+python3 scripts/java_ast.py --root <source-root> --branches > branches.json
+```
+Emits `if`/`switch`/`ternary`/`catch`/loop constructs with their arms and line numbers, per method. Skill 06 accounts for every arm (decision / behavior family / business rule / trivial) — a missed arm is a missed behavior *variant*. `run-coverage.sh` runs this as its final step.
+
 ## trace_data_state_flow — Tier 2 (script + reasoning)
 Use `source-model.json` + `callgraph.json` to follow reads/writes to fields, parameters, persisted entities and returned values along a path. Record state transitions and data lineage with provenance. Where dispatch is ambiguous, branch the path and attach an ambiguity gap rather than picking one.
 

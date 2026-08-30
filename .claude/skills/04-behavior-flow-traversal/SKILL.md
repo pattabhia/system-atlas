@@ -35,6 +35,9 @@ Source-construct accounting is a **completeness discipline**, not the reasoning 
 ## Closure-driven completeness
 Do not decide by judgment which methods to read. Drive traversal off the **call graph's transitive reachable set** from each entry point (including interface→impl override edges; name-based fallback where resolution is unavailable — a sound over-approximation). **Visit every reachable behavior-bearing method.** Report the reachable-but-unvisited and the unreached sets explicitly — the unreached set routinely surfaces additional entry points (lifecycle/subscription bootstrap, schedulers, exception handlers) that are themselves operations. Completeness is proven from the graph, never asserted.
 
+## Branch-completeness (the meaningful sub-line unit)
+Coverage is proven at the **method** level, then **branch** level — not per raw line (logging/braces/accessors carry no behavior). For every reachable method, enumerate its branch constructs (`if`/`else`, `switch` cases + default, `ternary`, `catch`, loop conditions) via `java_ast.py --branches`, and **account for every arm**: each maps to a captured decision / behavior family, a business rule, or is explicitly marked trivial (presence guard / log-only). A missed branch arm is a missed behavior *variant* — the one sub-method omission that actually matters (e.g. a rejection path, a fallback, an error mapping, or a hidden rule like a password-composition formula). Never leave an arm unaccounted.
+
 ## Outputs
 Flow graph; path variants; calls; reads/writes; state transitions; technical termination points; business-outcome candidates; traversal-queue additions; evidence provenance; unresolved paths.
 

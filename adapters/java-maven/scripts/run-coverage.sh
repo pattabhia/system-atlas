@@ -30,9 +30,12 @@ else
   echo "      Stage A (heuristic — build callgraph-jvm for Stage B)"
 fi
 
-echo "[3/3] reachability closure…"
+echo "[3/4] reachability closure…"
 "$PY" "$HERE/reachability.py" --model "$OUT/source-model.json" \
      --callgraph "$OUT/callgraph.json" --entry "$ENTRY" > "$OUT/reachability.json"
+
+echo "[4/4] branch inventory (branch-completeness)…"
+"$PY" "$HERE/java_ast.py" --root "$SRC" --branches > "$OUT/branches.json"
 
 "$PY" - "$OUT/reachability.json" <<'PYEOF'
 import json,sys
@@ -41,4 +44,9 @@ print(f"\ncoverage substrate ready: {c['total_methods']} methods | reachable {c[
       f"accessors {c['accessors']} | unreached {c['unreached']}")
 print("→ Skill 04 must now VISIT every reachable method and CLASSIFY the unreached set "
       "(framework entry points are new operations).")
+b=json.load(open(sys.argv[1].replace('reachability.json','branches.json')))
+bc=b["counts"]
+print(f"→ branch-completeness: {bc['branches']} branches / {bc['arms']} arms across "
+      f"{bc['methods_with_branches']} methods — Skill 06 must reconcile each branch "
+      "(covered decision / business rule / trivial), never silently skip an arm.")
 PYEOF

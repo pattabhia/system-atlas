@@ -277,6 +277,88 @@ def build_callgraph(root):
                        "errors": len(errors)}}
 
 
+def _line(node):
+    return node.start_point[0] + 1
+
+
+def _cond_text(node):
+    c = field(node, "condition")
+    t = txt(c) if c is not None else ""
+    t = " ".join((t or "").split())
+    return t[:80]
+
+
+def build_branches(root):
+    """Enumerate branch constructs per method — the behavior-variant subset:
+    if / else, switch cases + default, ternary, catch clauses, loops. Each branch
+    lists its arms so Skill 04/06 can confirm every arm is represented in the
+    decision/behavior model (branch-completeness)."""
+    parser = make_parser()
+    methods_out, errors = [], []
+    for path in iter_java_files(root):
+        tree, err = parse_file(parser, path)
+        if err:
+            errors.append(err); continue
+        pkg, _ = file_package_imports(tree.root_node)
+        for cls in (n for n in walk(tree.root_node) if n.type in TYPE_KINDS):
+            cname = type_name(cls)
+            for m in methods_of(cls):
+                mname = txt(field(m, "name"))
+                qual = f"{pkg}.{cname}#{mname}" if pkg else f"{cname}#{mname}"
+                body = field(m, "body")
+                if body is None:
+                    continue
+                branches = []
+                for n in walk(body):
+                    t = n.type
+                    if t == "if_statement":
+                        has_else = field(n, "alternative") is not None
+                        branches.append({"type": "if", "line": _line(n),
+                                          "cond": _cond_text(n),
+                                          "arms": ["then", "else" if has_else else "implicit-else"]})
+                    elif t == "ternary_expression":
+                        branches.append({"type": "ternary", "line": _line(n),
+                                          "arms": ["then", "else"]})
+                    elif t == "switch_expression":
+                        cases, has_default = [], False
+                        blk = field(n, "body")
+                        if blk is not None:
+                            for g in blk.children:
+                                if g.type in ("switch_block_statement_group", "switch_rule"):
+                                    for lab in g.children:
+                                        if lab.type == "switch_label":
+                                            lt = txt(lab)
+                                            if lt and lt.strip().startswith("default"):
+                                                has_default = True
+                                            else:
+                                                cases.append(" ".join((lt or "").split()))
+                        arms = cases + (["default"] if has_default else [])
+                        branches.append({"type": "switch", "line": _line(n),
+                                          "arms": arms or ["(empty)"]})
+                    elif t == "catch_clause":
+                        # exception type(s) in the catch parameter
+                        param = field(n, "parameter") or n
+                        et = ""
+                        for cc in walk(param):
+                            if cc.type in ("catch_type", "type_identifier", "union_type"):
+                                et = " ".join((txt(cc) or "").split()); break
+                        branches.append({"type": "catch", "line": _line(n),
+                                          "arms": [et or "exception"]})
+                    elif t in ("while_statement", "do_statement",
+                               "for_statement", "enhanced_for_statement"):
+                        branches.append({"type": "loop", "line": _line(n),
+                                         "cond": _cond_text(n), "arms": ["enter", "skip/exit"]})
+                if branches:
+                    methods_out.append({"method": qual, "file": path,
+                                        "branches": sorted(branches, key=lambda b: b["line"])})
+    tot_b = sum(len(m["branches"]) for m in methods_out)
+    tot_a = sum(len(b["arms"]) for m in methods_out for b in m["branches"])
+    return {"ok": True, "capability": "branch_inventory", "parser": "tree-sitter-java",
+            "root": root, "methods": methods_out, "parse_errors": errors,
+            "counts": {"methods_with_branches": len(methods_out),
+                       "branches": tot_b, "arms": tot_a, "errors": len(errors)}}
+
+
 def find_entrypoints(root):
     parser = make_parser()
     hits, errors = [], []
@@ -314,6 +396,7 @@ def main():
     g.add_argument("--model", action="store_true")
     g.add_argument("--callgraph", action="store_true")
     g.add_argument("--entrypoints", action="store_true")
+    g.add_argument("--branches", action="store_true")
     args = ap.parse_args()
 
     if not os.path.isdir(args.root):
@@ -324,6 +407,8 @@ def main():
         result = build_model(args.root)
     elif args.callgraph:
         result = build_callgraph(args.root)
+    elif args.branches:
+        result = build_branches(args.root)
     else:
         result = find_entrypoints(args.root)
     json.dump(result, sys.stdout, indent=2)

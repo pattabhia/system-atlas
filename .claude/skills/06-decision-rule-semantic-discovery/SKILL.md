@@ -32,6 +32,9 @@ L0 UNKNOWN; L1 INFERRED; L2 CORROBORATED; L3 AUTHORITATIVE.
 ## Business Rule Qualification
 Require a decision/condition + domain-relevant consequence + business context. Not every branch, setter, guard clause or framework condition is a business rule.
 
+## Branch reconciliation (completeness)
+Consume the branch inventory (`java_ast.py --branches`) for every reachable method and **account for each arm**: map it to a decision, a behavior family, a business rule, or mark it explicitly trivial (presence guard / log-only). Branch enumeration is mechanical; classification is the reasoning. This routinely surfaces rules hidden inside helper methods (e.g. a password-composition formula in length-check branches) that a flow-level pass records only implicitly. Emit a branch-completeness reconciliation; never leave an arm unaccounted.
+
 ## Outputs
 Decision/effect catalog; rule candidates; confirmed rules; semantic resolutions; value lineage; semantic evidence; unresolved meanings and ambiguities.
 
