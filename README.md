@@ -62,13 +62,13 @@ standard behavior baseline, BDD and characterization assets where feasible.
 ```
 
 ## Output location
-Deliverable packs are written to a dedicated, tool-managed store **outside** the analyzed repo — so the target is never polluted and packs survive deleting a cloned target:
+Deliverable packs are written to a dedicated, workspace-scoped store **outside** the analyzed repo — so the target is never polluted and packs survive deleting a cloned target:
 
 ```
-~/.haiintel/behavior-baselines/<project-id>/
+<workspace-root>/.haiintel/behavior-baselines/<project-id>/
 ```
 
-Supply an explicit output path in the run prompt to override.
+`<workspace-root>` is the directory holding the analyzed repos (e.g. `10.HAIINTEL`). Supply an explicit output path in the run prompt to override.
 
 ## Deliverable structure
 

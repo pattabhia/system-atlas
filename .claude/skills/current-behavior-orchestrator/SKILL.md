@@ -103,13 +103,13 @@ Narrate important hops while continuing automatically. Missing artifacts or capa
 Stop when every reachable behavior-bearing path/boundary discovered from the scoped operation is either resolved and analyzed or explicitly represented as unresolved/ambiguous/unknown, **and** every required-but-unavailable analysis capability is explicitly represented as a capability gap.
 
 ## Output Location
-Write the deliverable pack to a dedicated, tool-managed store **outside** the analyzed repository so it never pollutes the target and survives deletion of a cloned target:
+Write the deliverable pack to a dedicated, workspace-scoped store **outside** the analyzed repository so it never pollutes the target and survives deletion of a cloned target:
 
 ```
-~/.haiintel/behavior-baselines/<project-id>/
+<workspace-root>/.haiintel/behavior-baselines/<project-id>/
 ```
 
-Use an explicit `<output path>` when the run prompt supplies one; otherwise default to the path above. Never write the pack inside the target repo by default.
+`<workspace-root>` is the directory holding the analyzed repos (e.g. `10.HAIINTEL`). Use an explicit `<output path>` when the run prompt supplies one; otherwise default to the path above. Never write the pack inside the target repo by default.
 
 ## Final Aggregation
 Produce project/operation summary, stack profile, capability coverage, artifact/dependency topology, operation catalog where applicable, flow topology, decisions/effects, rule catalog, CBH + Service Context, capability mapping, BDD, native characterization assets where supported, evidence registry, behavior-linked gaps, capability gaps and completeness/confidence dimensions.
