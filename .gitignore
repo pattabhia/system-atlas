@@ -1,3 +1,4 @@
 .DS_Store
 behavior-baseline/
 adapters/**/target/
+dependency-reduced-pom.xml
