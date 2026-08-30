@@ -61,12 +61,20 @@ attach unresolved boundaries and capability gaps to affected behaviors, and gene
 standard behavior baseline, BDD and characterization assets where feasible.
 ```
 
+## Output location
+Deliverable packs are written to a dedicated, tool-managed store **outside** the analyzed repo — so the target is never polluted and packs survive deleting a cloned target:
+
+```
+~/.haiintel/behavior-baselines/<project-id>/
+```
+
+Supply an explicit output path in the run prompt to override.
+
 ## Deliverable structure
 
-**Project-level run**
+**Project-level run** (rooted at `~/.haiintel/behavior-baselines/`)
 ```
-behavior-baseline/
-└── <project-id>/
+<project-id>/
     ├── application-behavior-summary.md
     ├── 00-run-manifest/       run-summary.md, scope.yaml, stack-profiles.yaml, adapter-capability-coverage.yaml
     ├── 01-topology/           component-map.md, dependency-graph.md, artifact-inventory.yaml, version-resolution.yaml

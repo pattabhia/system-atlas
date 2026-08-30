@@ -32,6 +32,22 @@ The behavioral architecture is **8 core skills**. This orchestrator is the contr
 08 Verification
 ```
 
+## Execution Model — Subagent Dispatch
+The orchestrator stays the single control surface, but each worker skill runs as its **own subagent** (via the Agent tool). The orchestrator never reasons a worker skill's step inline.
+
+For each step:
+1. Spawn a subagent for the worker skill (e.g. `Skill 04 — Behavior Flow Traversal`), instructing it to apply that skill's `SKILL.md`.
+2. Pass only the **relevant slice of shared state** it needs (scope, current node, bound capabilities, the sub-queue) — not the whole run.
+3. Require a **typed handoff** back (the skill's declared Outputs), which the orchestrator merges into shared state.
+4. Route the next step from the merged state.
+
+Rules:
+- **Adapters are invoked by the subagent**, not the orchestrator — a worker subagent calls the bound adapter capability (e.g. `build_call_graph` → java-maven) and returns evidence.
+- **Isolation:** each subagent gets its own context window — essential for deep traversal of large repos.
+- **Parallelism:** independent steps fan out concurrently — e.g. Skill 02 alongside the entry scan, or Skill 04 across multiple entry points. Dispatch those in one batch.
+- **Recursion preserved:** when a Skill 04 subagent reports a new boundary, the orchestrator spawns a Skill 05 subagent, then re-spawns Skill 04 for the resolved target. The queue lives in the orchestrator, not inside any subagent.
+- **State authority:** only the orchestrator mutates shared state. Subagents return data; they do not carry cross-step state themselves.
+
 ## Capability Routing
 Skill 01 emits one or more **Stack Profiles**. The orchestrator binds the canonical capabilities from the [Stack Adapter Contract](../shared/stack-adapter-contract.md) to available adapter implementations. When traversal crosses into a different ecosystem, **rebind capabilities for that subtree** while preserving the same run/operation/behavior state.
 
@@ -85,6 +101,15 @@ Narrate important hops while continuing automatically. Missing artifacts or capa
 
 ## Stop Condition
 Stop when every reachable behavior-bearing path/boundary discovered from the scoped operation is either resolved and analyzed or explicitly represented as unresolved/ambiguous/unknown, **and** every required-but-unavailable analysis capability is explicitly represented as a capability gap.
+
+## Output Location
+Write the deliverable pack to a dedicated, tool-managed store **outside** the analyzed repository so it never pollutes the target and survives deletion of a cloned target:
+
+```
+~/.haiintel/behavior-baselines/<project-id>/
+```
+
+Use an explicit `<output path>` when the run prompt supplies one; otherwise default to the path above. Never write the pack inside the target repo by default.
 
 ## Final Aggregation
 Produce project/operation summary, stack profile, capability coverage, artifact/dependency topology, operation catalog where applicable, flow topology, decisions/effects, rule catalog, CBH + Service Context, capability mapping, BDD, native characterization assets where supported, evidence registry, behavior-linked gaps, capability gaps and completeness/confidence dimensions.
