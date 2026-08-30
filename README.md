@@ -91,6 +91,7 @@ Deliverable packs are written to a dedicated, workspace-scoped store **outside**
 ├── 01-scope/            operation-scope.yaml, entrypoints.yaml
 ├── 02-artifacts/        artifact-map.yaml, boundary-registry.yaml
 ├── 03-flows/            end-to-end-flow.md, flow-graph.mmd, path-variants.yaml
+├── 04-coverage/         coverage.yaml   (closure-driven proof: every reachable method visited; unreached classified)
 ├── 04-decisions-effects/ decisions.yaml, state-effects.yaml, integration-effects.yaml
 ├── 05-rules-semantics/  rule-catalog.yaml, semantic-resolutions.yaml, value-lineage.yaml
 ├── 06-behavior/         current-behavior.md, cbh.yaml, service-context.yaml, behavior-family.yaml, capability-map.yaml
