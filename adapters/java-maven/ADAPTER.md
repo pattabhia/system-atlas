@@ -82,6 +82,14 @@ Caller→callee edges by **heuristic name/type resolution**; each carries a `con
 
 **Precision honesty:** Stage A is AST-heuristic, not sound — never present it as a compiler/bytecode graph. Stage B is source-symbol-solved (sound within the resolved classpath); it is still not bytecode-level (does not follow reflection/dynamic proxies — that would be an optional Soot/WALA Stage C). If neither runs, grep for callsites and mark `⊘ CAPABILITY partial`.
 
+## reachability / coverage — closure over the call graph
+After building the call graph, compute the reachable-method closure from the entry points to drive complete traversal (Skill 04's coverage discipline):
+```bash
+python3 scripts/reachability.py --model source-model.json --callgraph callgraph.json \
+        --entry "<entryMethod1>,<entryMethod2>,..." > reachability.json
+```
+Uses **resolved + interface-override edges** (Stage B emits `dispatch:"override"` edges so a call to an interface method expands to its concrete implementors), with a **name-based fallback** for unresolved edges — a *sound over-approximation* (never misses a reachable method). Output classifies every project method as reachable / accessor / unreached; the unreached set is a finding (framework-invoked entry points, cross-cutting handlers, or candidate-dead), not silence.
+
 ## trace_data_state_flow — Tier 2 (script + reasoning)
 Use `source-model.json` + `callgraph.json` to follow reads/writes to fields, parameters, persisted entities and returned values along a path. Record state transitions and data lineage with provenance. Where dispatch is ambiguous, branch the path and attach an ambiguity gap rather than picking one.
 

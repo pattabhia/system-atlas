@@ -32,6 +32,9 @@ When traversal crosses into another technology ecosystem, preserve the same beha
 ## Source Accounting
 Source-construct accounting is a **completeness discipline**, not the reasoning unit. Analyze methods/functions/blocks/paths while accounting for behavior-relevant executable constructs.
 
+## Closure-driven completeness
+Do not decide by judgment which methods to read. Drive traversal off the **call graph's transitive reachable set** from each entry point (including interface→impl override edges; name-based fallback where resolution is unavailable — a sound over-approximation). **Visit every reachable behavior-bearing method.** Report the reachable-but-unvisited and the unreached sets explicitly — the unreached set routinely surfaces additional entry points (lifecycle/subscription bootstrap, schedulers, exception handlers) that are themselves operations. Completeness is proven from the graph, never asserted.
+
 ## Outputs
 Flow graph; path variants; calls; reads/writes; state transitions; technical termination points; business-outcome candidates; traversal-queue additions; evidence provenance; unresolved paths.
 

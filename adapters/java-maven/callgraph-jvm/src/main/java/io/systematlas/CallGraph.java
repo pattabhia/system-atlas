@@ -4,10 +4,13 @@ import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.CallableDeclaration;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
+import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration;
+import com.github.javaparser.resolution.types.ResolvedReferenceType;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.JarTypeSolver;
@@ -77,7 +80,7 @@ public class CallGraph {
         StaticJavaParser.setConfiguration(cfg);
 
         List<String> edges = new ArrayList<>();
-        int total = 0, resolved = 0, parseErrs = 0;
+        int total = 0, resolved = 0, parseErrs = 0, overrideEdges = 0;
 
         List<Path> files = new ArrayList<>();
         for (String root : srcRoots) {
@@ -88,11 +91,34 @@ public class CallGraph {
             } catch (IOException e) { errors.add("walk:" + root + ":" + e); }
         }
 
+        // Parse once, keep CUs; build interface/superclass -> concrete-implementor index
+        // so calls that resolve to an interface method also emit edges to the overriding
+        // implementation(s) (interface->impl dispatch).
+        List<CompilationUnit> cus = new ArrayList<>();
+        Map<String, List<String>> implsByType = new HashMap<>();   // ancestorQN -> [implQN...]
+        Map<String, Set<String>> methodsByType = new HashMap<>();  // typeQN -> {methodName...}
         for (Path f : files) {
             CompilationUnit cu;
             try { cu = StaticJavaParser.parse(f); }
             catch (Exception e) { parseErrs++; errors.add("parse:" + f + ":" + e.getClass().getSimpleName()); continue; }
+            cus.add(cu);
+            for (ClassOrInterfaceDeclaration cid : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+                if (cid.isInterface()) continue;
+                String implQN;
+                try { implQN = cid.resolve().getQualifiedName(); } catch (Throwable t) { continue; }
+                Set<String> mnames = methodsByType.computeIfAbsent(implQN, k -> new HashSet<>());
+                cid.getMethods().forEach(m -> mnames.add(m.getNameAsString()));
+                try {
+                    for (ResolvedReferenceType anc : cid.resolve().getAllAncestors()) {
+                        String ancQN = anc.getQualifiedName();
+                        if (ancQN != null && ancQN.startsWith("io.mosip.digitalcard"))
+                            implsByType.computeIfAbsent(ancQN, k -> new ArrayList<>()).add(implQN);
+                    }
+                } catch (Throwable ignore) { /* unresolved ancestor (external) — skip */ }
+            }
+        }
 
+        for (CompilationUnit cu : cus) {
             for (MethodCallExpr mce : cu.findAll(MethodCallExpr.class)) {
                 total++;
                 String caller = enclosing(mce);
@@ -104,10 +130,22 @@ public class CallGraph {
                     calleeSig = rmd.getQualifiedSignature();
                     isResolved = true;
                     resolved++;
+                    // interface/abstract dispatch: emit override edges to concrete implementors
+                    ResolvedReferenceTypeDeclaration dt = rmd.declaringType();
+                    boolean abstractish = dt.isInterface() || (rmd.isAbstract());
+                    if (abstractish && implsByType.containsKey(calleeOwner)) {
+                        String m = mce.getNameAsString();
+                        for (String impl : implsByType.get(calleeOwner)) {
+                            if (methodsByType.getOrDefault(impl, Set.of()).contains(m)) {
+                                edges.add(edgeJson(caller, m, impl, impl + "." + m, true, "override"));
+                                overrideEdges++;
+                            }
+                        }
+                    }
                 } catch (Throwable t) {
                     calleeOwner = mce.getScope().map(Object::toString).orElse(null);
                 }
-                edges.add(edgeJson(caller, mce.getNameAsString(), calleeOwner, calleeSig, isResolved));
+                edges.add(edgeJson(caller, mce.getNameAsString(), calleeOwner, calleeSig, isResolved, "direct"));
             }
         }
 
@@ -118,6 +156,7 @@ public class CallGraph {
           .append("\"counts\":{\"edges\":").append(total)
           .append(",\"resolved\":").append(resolved)
           .append(",\"unresolved\":").append(total - resolved)
+          .append(",\"override_edges\":").append(overrideEdges)
           .append(",\"files\":").append(files.size())
           .append(",\"parse_errors\":").append(parseErrs)
           .append(",\"classpath_jars\":").append(jars).append("},")
@@ -136,10 +175,10 @@ public class CallGraph {
         return cd.getNameAsString();
     }
 
-    private static String edgeJson(String caller, String method, String owner, String sig, boolean resolved) {
+    private static String edgeJson(String caller, String method, String owner, String sig, boolean resolved, String dispatch) {
         return "{\"caller\":" + q(caller) + ",\"callee\":{\"owner_fqn\":" + q(owner)
                 + ",\"method\":" + q(method) + ",\"signature\":" + q(sig)
-                + "},\"resolved\":" + resolved + "}";
+                + "},\"resolved\":" + resolved + ",\"dispatch\":" + q(dispatch) + "}";
     }
 
     private static String q(String s) {

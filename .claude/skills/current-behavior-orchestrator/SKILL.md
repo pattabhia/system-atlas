@@ -99,8 +99,15 @@ See [traversal-state.md](../shared/traversal-state.md).
 ## Autonomous Behavior
 Narrate important hops while continuing automatically. Missing artifacts or capabilities normally create behavior-linked or capability-linked gaps rather than interactive questions. Operating rule: **Discover → Resolve → Narrate → Continue.**
 
+## Coverage Discipline — closure-driven, provable
+Completeness must be **proven from the call graph, not asserted by judgment**. After Skill 03 gives entry points and `build_call_graph` gives the resolved graph:
+1. Compute the **transitive reachable set** of methods from every entry point over the resolved graph, including **interface→implementation (override) edges** (a call resolving to an interface method must expand to its concrete implementors). Offline/unresolved edges fall back to a **name-based over-approximation** (sound: never misses a reachable method) — flag those hops as heuristic.
+2. **Visit every reachable behavior-bearing method** (exclude DTO/entity/constant accessors as framework-invoked). Mark each `visited` / `deferred-at-boundary`.
+3. Emit a **coverage report**: total methods, reachable/visited, and the **unreached set explicitly classified** — framework-lifecycle entry points (which are *new operations*, e.g. subscription bootstrap), cross-cutting handlers, and candidate-dead code. Unreached is a finding, not silence.
+Tooling: java-maven `reachability.py` over the Stage-B graph.
+
 ## Stop Condition
-Stop when every reachable behavior-bearing path/boundary discovered from the scoped operation is either resolved and analyzed or explicitly represented as unresolved/ambiguous/unknown, **and** every required-but-unavailable analysis capability is explicitly represented as a capability gap.
+Stop when every reachable behavior-bearing path/boundary discovered from the scoped operation is either resolved and analyzed or explicitly represented as unresolved/ambiguous/unknown, **and** every required-but-unavailable analysis capability is a capability gap, **and** the coverage report accounts for every project method (reachable-visited / accessor / unreached-classified).
 
 ## Output Location
 Write the deliverable pack to a dedicated, workspace-scoped store **outside** the analyzed repository so it never pollutes the target and survives deletion of a cloned target:
