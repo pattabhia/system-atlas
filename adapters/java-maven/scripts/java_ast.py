@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 """
-java_ast.py — Tier-2 source analysis for the java-maven adapter.
+java_ast.py — Tier-2 source analysis for the java-maven adapter (Stage A).
+
+Parser: tree-sitter + tree-sitter-java (MIT). Full Java 21 grammar — records,
+sealed types, switch expressions, text blocks all parse. This replaces the older
+javalang backend, which could not parse Java 14+ syntax (gap CG-01).
 
 Emits, as JSON on stdout, one of:
   --model        per-file source model (packages, classes, methods, fields, imports)
   --callgraph    heuristic caller -> callee edges with a confidence score
   --entrypoints  detected invocation surfaces (annotations / main / runners)
 
-Claude (the runtime) calls this from ADAPTER.md and reads the JSON back.
-
 LIMITATIONS (must be surfaced, never hidden):
-  * Call-graph resolution is HEURISTIC and name/type-based, not a compiler- or
-    bytecode-derived graph. It resolves callee types via imports, declared local
-    variable types, fields and `this`; anything else is emitted with lower
-    confidence and `resolved: false`. Overloads and dynamic dispatch are reported
-    as-is, not disambiguated. Reflection / proxies / lambdas-as-callbacks are not
-    followed. Treat edges as evidence at their stated confidence, not proof.
-  * If `javalang` is not installed, this script exits non-zero with a JSON error
-    object so the adapter falls back to grep and records a `CAPABILITY` gap.
+  * tree-sitter PARSES Java 21 fully, but does NOT resolve symbols/types. Call-graph
+    resolution here is still HEURISTIC (name/type based via imports, local-var and
+    field types, `this`, static type names). Overloads, generics, inheritance and
+    cross-jar targets are NOT resolved — those need the Stage B JavaParser+SymbolSolver
+    helper (adapters/java-maven/callgraph-jvm) which emits sound, resolved edges.
+    Edges here carry a `confidence`; `resolved: false` marks unresolved qualifiers.
+  * If tree-sitter is unavailable, this exits non-zero with a JSON error object so the
+    adapter falls back to grep and records a CAPABILITY gap.
 """
 import argparse
 import json
@@ -25,13 +27,15 @@ import os
 import sys
 
 try:
-    import javalang
+    import tree_sitter_java as tsjava
+    from tree_sitter import Language, Parser
+    _LANG = Language(tsjava.language())
 except Exception as e:  # pragma: no cover - environment dependent
     print(json.dumps({
         "ok": False,
-        "error": "javalang_unavailable",
+        "error": "tree_sitter_unavailable",
         "detail": str(e),
-        "remedy": "pip install javalang  (or use the grep fallback in ADAPTER.md)",
+        "remedy": "pip install tree-sitter tree-sitter-java  (or use the grep fallback in ADAPTER.md)",
         "capability_gap": "CAPABILITY",
     }))
     sys.exit(2)
@@ -40,9 +44,19 @@ ENTRYPOINT_ANNOTATIONS = {
     "RestController", "Controller", "RequestMapping", "GetMapping", "PostMapping",
     "PutMapping", "DeleteMapping", "PatchMapping", "Path", "KafkaListener",
     "JmsListener", "RabbitListener", "Scheduled", "MessageMapping", "EventListener",
-    "StreamListener",
+    "StreamListener", "KafkaHandler", "SqsListener", "Incoming",
 }
+TYPE_KINDS = {"class_declaration", "interface_declaration", "enum_declaration",
+              "record_declaration", "annotation_type_declaration"}
 SKIP_DIRS = {"target", "build", ".git", "node_modules", ".idea", "out"}
+
+
+def make_parser():
+    try:
+        return Parser(_LANG)
+    except TypeError:  # older binding
+        p = Parser(); p.language = _LANG
+        return p
 
 
 def iter_java_files(root):
@@ -53,157 +67,248 @@ def iter_java_files(root):
                 yield os.path.join(dirpath, fn)
 
 
-def parse_tree(path):
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            src = fh.read()
-        return javalang.parse.parse(src), None
-    except Exception as e:
-        return None, {"file": path, "error": type(e).__name__, "detail": str(e)}
+def txt(node):
+    return node.text.decode("utf-8", "replace") if node is not None else None
 
 
-def anno_names(node):
-    out = []
-    for a in getattr(node, "annotations", []) or []:
-        out.append(a.name)
+def field(node, name):
+    return node.child_by_field_name(name)
+
+
+def walk(node):
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        yield n
+        stack.extend(n.children)
+
+
+def _modifiers_node(decl):
+    return next((c for c in decl.children if c.type == "modifiers"), None)
+
+
+def annotations(decl):
+    out, mods = [], _modifiers_node(decl)
+    if mods:
+        for c in mods.children:
+            if c.type in ("marker_annotation", "annotation"):
+                nm = field(c, "name")
+                if nm is not None:
+                    out.append(txt(nm).split(".")[-1])
     return out
+
+
+def modifier_keywords(decl):
+    out, mods = [], _modifiers_node(decl)
+    if mods:
+        for c in mods.children:
+            if c.type not in ("marker_annotation", "annotation"):
+                out.append(txt(c))
+    return out
+
+
+def type_name(decl):
+    return txt(field(decl, "name"))
+
+
+def methods_of(decl):
+    body = field(decl, "body")
+    if body is None:
+        return []
+    return [c for c in body.children if c.type == "method_declaration"]
+
+
+def fields_of(decl):
+    body = field(decl, "body")
+    res = []
+    if body is None:
+        return res
+    for c in body.children:
+        if c.type == "field_declaration":
+            ftype = txt(field(c, "type"))
+            for vd in c.children:
+                if vd.type == "variable_declarator":
+                    res.append({"name": txt(field(vd, "name")), "type": ftype})
+    return res
 
 
 def method_sig(m):
     params = []
-    for p in m.parameters:
-        t = getattr(p.type, "name", None) or "var"
-        params.append(t)
-    ret = getattr(m, "return_type", None)
-    ret = getattr(ret, "name", None) if ret else "void"
-    return {"name": m.name, "params": params, "return": ret,
-            "annotations": anno_names(m),
-            "modifiers": sorted(list(getattr(m, "modifiers", []) or []))}
+    fp = field(m, "parameters")
+    if fp is not None:
+        for p in fp.children:
+            if p.type in ("formal_parameter", "spread_parameter"):
+                params.append(txt(field(p, "type")) or "var")
+    return {"name": txt(field(m, "name")),
+            "params": params,
+            "return": txt(field(m, "type")) or "void",
+            "annotations": annotations(m),
+            "modifiers": modifier_keywords(m)}
+
+
+def implemented_interfaces(decl):
+    out = []
+    node = field(decl, "interfaces") or field(decl, "super_interfaces")
+    if node is not None:
+        for n in walk(node):
+            if n.type == "type_identifier":
+                out.append(txt(n))
+    return out
+
+
+def parse_file(parser, path):
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+        tree = parser.parse(data)
+        # tree-sitter never throws on bad syntax; it inserts ERROR nodes.
+        return tree, None
+    except Exception as e:
+        return None, {"file": path, "error": type(e).__name__, "detail": str(e)}
+
+
+def has_errors(tree):
+    return tree.root_node.has_error
+
+
+def file_package_imports(root_node):
+    pkg, imports = None, {}
+    for c in root_node.children:
+        if c.type == "package_declaration":
+            for n in walk(c):
+                if n.type in ("scoped_identifier", "identifier"):
+                    pkg = txt(n); break
+        elif c.type == "import_declaration":
+            path = None
+            for n in c.children:
+                if n.type in ("scoped_identifier", "identifier"):
+                    path = txt(n)
+            if path:
+                imports[path.split(".")[-1]] = path
+    return pkg, imports
 
 
 def build_model(root):
+    parser = make_parser()
     files, errors = [], []
     for path in iter_java_files(root):
-        tree, err = parse_tree(path)
+        tree, err = parse_file(parser, path)
         if err:
-            errors.append(err)
-            continue
-        pkg = tree.package.name if tree.package else None
-        imports = {}
-        for imp in tree.imports:
-            simple = imp.path.split(".")[-1]
-            imports[simple] = imp.path
+            errors.append(err); continue
+        pkg, imports = file_package_imports(tree.root_node)
         classes = []
-        for _, node in tree.filter(javalang.tree.TypeDeclaration):
-            methods = [method_sig(m) for m in getattr(node, "methods", [])]
-            fields = []
-            for f in getattr(node, "fields", []):
-                ftype = getattr(f.type, "name", None)
-                for d in f.declarators:
-                    fields.append({"name": d.name, "type": ftype})
+        for decl in (n for n in walk(tree.root_node) if n.type in TYPE_KINDS):
             classes.append({
-                "name": node.name,
-                "kind": type(node).__name__,
-                "annotations": anno_names(node),
-                "extends": getattr(getattr(node, "extends", None), "name", None)
-                           if not isinstance(getattr(node, "extends", None), list) else None,
-                "methods": methods,
-                "fields": fields,
+                "name": type_name(decl),
+                "kind": decl.type,
+                "annotations": annotations(decl),
+                "extends": txt(field(decl, "superclass")),
+                "implements": implemented_interfaces(decl),
+                "methods": [method_sig(m) for m in methods_of(decl)],
+                "fields": fields_of(decl),
             })
-        files.append({"file": path, "package": pkg,
-                      "imports": imports, "classes": classes})
-    return {"ok": True, "capability": "build_source_model",
+        files.append({"file": path, "package": pkg, "imports": imports,
+                      "classes": classes,
+                      "parse_incomplete": bool(tree.root_node.has_error)})
+    return {"ok": True, "capability": "build_source_model", "parser": "tree-sitter-java",
             "root": root, "files": files, "parse_errors": errors,
-            "counts": {"files": len(files), "errors": len(errors)}}
+            "counts": {"files": len(files), "errors": len(errors),
+                       "with_syntax_errors": sum(1 for f in files if f["parse_incomplete"])}}
 
 
 def build_callgraph(root):
-    edges, errors = [], []
+    parser = make_parser()
+    edges, errors, incomplete = [], [], 0
     for path in iter_java_files(root):
-        tree, err = parse_tree(path)
+        tree, err = parse_file(parser, path)
         if err:
-            errors.append(err)
-            continue
-        pkg = tree.package.name if tree.package else ""
-        imports = {imp.path.split(".")[-1]: imp.path for imp in tree.imports}
-        for _, cls in tree.filter(javalang.tree.TypeDeclaration):
-            # local field name -> declared type, to resolve `field.method()`
-            field_types = {}
-            for f in getattr(cls, "fields", []):
-                ftype = getattr(f.type, "name", None)
-                for d in f.declarators:
-                    field_types[d.name] = ftype
-            for m in getattr(cls, "methods", []):
-                caller = f"{pkg}.{cls.name}#{m.name}" if pkg else f"{cls.name}#{m.name}"
-                # local var name -> type within this method
+            errors.append(err); continue
+        if tree.root_node.has_error:
+            incomplete += 1
+        pkg, imports = file_package_imports(tree.root_node)
+        for cls in (n for n in walk(tree.root_node) if n.type in TYPE_KINDS):
+            cname = type_name(cls)
+            field_types = {f["name"]: f["type"] for f in fields_of(cls)}
+            for m in methods_of(cls):
+                caller = f"{pkg}.{cname}#{txt(field(m,'name'))}" if pkg else f"{cname}#{txt(field(m,'name'))}"
+                body = field(m, "body")
+                if body is None:
+                    continue
                 local_types = {}
-                if m.body:
-                    for _, ld in m.filter(javalang.tree.LocalVariableDeclaration):
-                        lt = getattr(ld.type, "name", None)
-                        for d in ld.declarators:
-                            local_types[d.name] = lt
-                    for _, inv in m.filter(javalang.tree.MethodInvocation):
-                        qualifier = inv.qualifier or ""
-                        member = inv.member
-                        owner_type, resolved, conf = None, False, 0.3
-                        if qualifier in ("", "this"):
-                            owner_type, resolved, conf = cls.name, True, 0.8
-                        elif qualifier in local_types:
-                            owner_type, resolved, conf = local_types[qualifier], True, 0.7
-                        elif qualifier in field_types:
-                            owner_type, resolved, conf = field_types[qualifier], True, 0.7
-                        elif qualifier and qualifier[0].isupper():
-                            # static call on a type name
-                            owner_type, resolved, conf = qualifier, True, 0.6
-                        fqn = imports.get(owner_type, owner_type) if owner_type else None
-                        edges.append({
-                            "caller": caller,
-                            "callee": {"owner": owner_type, "owner_fqn": fqn,
-                                       "method": member, "qualifier": qualifier},
-                            "resolved": resolved,
-                            "confidence": conf,
-                        })
-    return {"ok": True, "capability": "build_call_graph",
-            "root": root, "edges": edges, "parse_errors": errors,
-            "resolution": "heuristic-name-type",
+                for n in walk(body):
+                    if n.type == "local_variable_declaration":
+                        lt = txt(field(n, "type"))
+                        for vd in n.children:
+                            if vd.type == "variable_declarator":
+                                local_types[txt(field(vd, "name"))] = lt
+                for n in walk(body):
+                    if n.type != "method_invocation":
+                        continue
+                    obj = field(n, "object")
+                    member = txt(field(n, "name"))
+                    owner, resolved, conf = None, False, 0.3
+                    if obj is None:
+                        owner, resolved, conf = cname, True, 0.8
+                    elif obj.type == "this":
+                        owner, resolved, conf = cname, True, 0.8
+                    elif obj.type == "identifier":
+                        q = txt(obj)
+                        if q in local_types:
+                            owner, resolved, conf = local_types[q], True, 0.7
+                        elif q in field_types:
+                            owner, resolved, conf = field_types[q], True, 0.7
+                        elif q and q[0].isupper():
+                            owner, resolved, conf = q, True, 0.6   # static call on a type
+                        else:
+                            owner, resolved, conf = q, False, 0.3
+                    else:
+                        owner, resolved, conf = txt(obj), False, 0.3  # complex receiver
+                    fqn = imports.get(owner, owner) if owner else None
+                    edges.append({"caller": caller,
+                                  "callee": {"owner": owner, "owner_fqn": fqn,
+                                             "method": member, "qualifier": txt(obj) if obj else ""},
+                                  "resolved": resolved, "confidence": conf})
+    return {"ok": True, "capability": "build_call_graph", "parser": "tree-sitter-java",
+            "resolution": "heuristic-name-type", "root": root, "edges": edges,
+            "parse_errors": errors,
             "counts": {"edges": len(edges),
                        "unresolved": sum(1 for e in edges if not e["resolved"]),
+                       "files_with_syntax_errors": incomplete,
                        "errors": len(errors)}}
 
 
 def find_entrypoints(root):
+    parser = make_parser()
     hits, errors = [], []
     for path in iter_java_files(root):
-        tree, err = parse_tree(path)
+        tree, err = parse_file(parser, path)
         if err:
-            errors.append(err)
-            continue
-        pkg = tree.package.name if tree.package else ""
-        for _, cls in tree.filter(javalang.tree.TypeDeclaration):
-            cls_annos = set(anno_names(cls))
-            implements = [getattr(i, "name", None) for i in (getattr(cls, "implements", None) or [])]
-            for m in getattr(cls, "methods", []):
-                m_annos = set(anno_names(m))
+            errors.append(err); continue
+        pkg, _ = file_package_imports(tree.root_node)
+        for cls in (n for n in walk(tree.root_node) if n.type in TYPE_KINDS):
+            cname = type_name(cls)
+            cls_annos = set(annotations(cls))
+            implements = set(implemented_interfaces(cls))
+            for m in methods_of(cls):
+                m_annos = set(annotations(m))
+                mods = set(modifier_keywords(m))
                 surfaces = (cls_annos | m_annos) & ENTRYPOINT_ANNOTATIONS
-                is_main = (m.name == "main" and "static" in (m.modifiers or set())
-                           and "public" in (m.modifiers or set()))
-                is_runner = "run" == m.name and "CommandLineRunner" in implements
+                mname = txt(field(m, "name"))
+                is_main = (mname == "main" and "static" in mods and "public" in mods)
+                is_runner = (mname == "run" and "CommandLineRunner" in implements)
                 if surfaces or is_main or is_runner:
-                    hits.append({
-                        "file": path,
-                        "type": f"{pkg}.{cls.name}" if pkg else cls.name,
-                        "method": m.name,
-                        "surfaces": sorted(surfaces),
-                        "main": is_main, "runner": is_runner,
-                        "class_annotations": sorted(cls_annos),
-                    })
-    return {"ok": True, "capability": "discover_entrypoints",
+                    hits.append({"file": path,
+                                 "type": f"{pkg}.{cname}" if pkg else cname,
+                                 "method": mname, "surfaces": sorted(surfaces),
+                                 "main": is_main, "runner": is_runner,
+                                 "class_annotations": sorted(cls_annos)})
+    return {"ok": True, "capability": "discover_entrypoints", "parser": "tree-sitter-java",
             "root": root, "entrypoints": hits, "parse_errors": errors,
             "counts": {"entrypoints": len(hits), "errors": len(errors)}}
 
 
 def main():
-    ap = argparse.ArgumentParser(description="java-maven Tier-2 source analysis")
+    ap = argparse.ArgumentParser(description="java-maven Tier-2 source analysis (tree-sitter)")
     ap.add_argument("--root", required=True, help="source root to analyze")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--model", action="store_true")

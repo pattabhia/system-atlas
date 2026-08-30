@@ -1,3 +1,5 @@
-# Tier-2 dependency for java_ast.py. If unavailable, the adapter falls back to
-# grep-based extraction and records a CAPABILITY gap (see ADAPTER.md).
-javalang>=0.13.0
+# Tier-2 (Stage A) parser deps for java_ast.py. MIT-licensed, free/OSS.
+# Full Java 21 grammar (records, sealed types, switch expressions, text blocks).
+# If unavailable, the adapter falls back to grep and records a CAPABILITY gap.
+tree-sitter>=0.21
+tree-sitter-java>=0.21

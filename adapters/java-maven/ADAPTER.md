@@ -2,7 +2,11 @@
 
 **Kind:** language / build
 **Binds when:** a Stack Profile reports language = Java and build system = Maven.
-**Prerequisites (check first, record as capability limitations if absent):** `mvn`, a JDK (`javap`, `jdeps`, `jar`), `git`; optional `python3` + `javalang` for the AST script.
+**Prerequisites (check first, record as capability limitations if absent):** `mvn`, a JDK 21 (`javap`, `jdeps`, `jar`), `git`; `python3` + `tree-sitter`/`tree-sitter-java` for the Stage-A AST script; optionally the prebuilt `callgraph-jvm/target/callgraph.jar` for Stage-B symbol-solved call graphs.
+
+## Source analysis — two stages (both free/OSS)
+- **Stage A** — `scripts/java_ast.py` on **tree-sitter-java** (MIT). Parses the full Java 21 grammar (records, sealed types, switch expressions, text blocks). Serves `build_source_model`, `discover_entrypoints`, and a **heuristic** `build_call_graph`.
+- **Stage B** — `callgraph-jvm/` (JavaParser + SymbolSolver, Apache-2.0). **Resolves** each call to a fully-qualified method (overloads, inheritance, cross-jar) for a **sound** `build_call_graph`. Preferred when available; Stage A is the fallback.
 
 This adapter owns the **language/source** capabilities for a Java/Maven profile. It does **not** own `inspect_datastore`, `resolve_service_target` or `resolve_event_target` — it only *discovers the call sites* for those and hands the boundary to the orchestrator, which binds the cross-cutting adapter by boundary kind.
 
@@ -46,7 +50,7 @@ Find invocation surfaces. Preferred: run the AST script, which flags entrypoint 
 python3 scripts/java_ast.py --root <source-root> --entrypoints
 ```
 Recognized surfaces (examples, not an exhaustive rule): `@RestController`/`@RequestMapping`/`@GetMapping`… , JAX-RS `@Path`, `@KafkaListener`/`@JmsListener`/`@RabbitListener`, `@Scheduled`, Spring Batch jobs, `@MessageMapping`, `CommandLineRunner`/`main(String[])`, `@EventListener`.
-Fallback if the script/`javalang` is unavailable:
+Fallback if the script/`tree-sitter` is unavailable:
 ```bash
 grep -rEn '@(RestController|RequestMapping|Get|Post|Put|Delete|Patch)Mapping|@Path|@KafkaListener|@Scheduled|CommandLineRunner|public static void main' --include='*.java' <root>
 ```
@@ -56,14 +60,27 @@ Map each entry point → source provenance + invocation mechanism + input contra
 ```bash
 python3 scripts/java_ast.py --root <source-root> --model > source-model.json
 ```
-Emits per file: package, classes, methods (name, params, return, annotations), fields, and imports. If `javalang` is missing, degrade to grep-based class/method extraction and mark the model **partial (`⊘ CAPABILITY`)**.
+Emits per file: package, classes, methods (name, params, return, annotations), fields, imports, and a `parse_incomplete` flag. Parses full Java 21 via tree-sitter. If `tree-sitter` is missing, degrade to grep-based class/method extraction and mark the model **partial (`⊘ CAPABILITY`)**.
 
-## build_call_graph — Tier 2 (script)  ← the one real-code capability
+## build_call_graph — prefer Stage B (symbol-solved); fall back to Stage A (heuristic)
+
+**Stage B — sound resolution (preferred).** Build the jar once, resolve the classpath, run:
+```bash
+# one-time (needs network to Maven Central):
+callgraph-jvm/build.sh                                   # -> callgraph-jvm/target/callgraph.jar
+# per target:
+mvn -q dependency:build-classpath -Dmdep.outputFile=cp.txt   # effective classpath
+java -jar callgraph-jvm/target/callgraph.jar --src <source-root> --classpath cp.txt > callgraph.json
+```
+Each edge resolves to a fully-qualified `owner_fqn` + method `signature` with `resolved:true` (**PROVEN**). Overloads/inheritance/cross-jar are resolved by the symbol solver. Unresolvable calls stay `resolved:false` — never guessed. Without `--classpath`, intra-project + JDK calls still resolve; cross-jar edges to unbuilt dependencies are reported unresolved (a boundary/version gap, not an invention).
+
+**Stage A — heuristic (fallback when the jar/classpath is unavailable).**
 ```bash
 python3 scripts/java_ast.py --root <source-root> --callgraph > callgraph.json
 ```
-Produces caller→callee edges by **heuristic name/type resolution** (see the script's own limitations block). Edges carry a `confidence`. Overload/dynamic-dispatch/reflection cases are marked ambiguous, not guessed.
-**Precision honesty:** this is AST-heuristic, not a soundness-guaranteed graph. It must never be presented as equivalent to a compiler/bytecode call graph. When the script is unavailable, fall back to grep for callsites and mark the capability `⊘ CAPABILITY partial`.
+Caller→callee edges by **heuristic name/type resolution**; each carries a `confidence` and `resolved` flag. Complex receivers (method chains) are flagged `resolved:false`, not guessed.
+
+**Precision honesty:** Stage A is AST-heuristic, not sound — never present it as a compiler/bytecode graph. Stage B is source-symbol-solved (sound within the resolved classpath); it is still not bytecode-level (does not follow reflection/dynamic proxies — that would be an optional Soot/WALA Stage C). If neither runs, grep for callsites and mark `⊘ CAPABILITY partial`.
 
 ## trace_data_state_flow — Tier 2 (script + reasoning)
 Use `source-model.json` + `callgraph.json` to follow reads/writes to fields, parameters, persisted entities and returned values along a path. Record state transitions and data lineage with provenance. Where dispatch is ambiguous, branch the path and attach an ambiguity gap rather than picking one.
