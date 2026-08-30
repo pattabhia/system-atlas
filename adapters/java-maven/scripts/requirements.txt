@@ -1,0 +1,3 @@
+# Tier-2 dependency for java_ast.py. If unavailable, the adapter falls back to
+# grep-based extraction and records a CAPABILITY gap (see ADAPTER.md).
+javalang>=0.13.0

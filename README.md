@@ -26,7 +26,14 @@
 Shared contracts: [stack-adapter-contract](.claude/skills/shared/stack-adapter-contract.md) · [evidence-model](.claude/skills/shared/evidence-model.md) · [gap-model](.claude/skills/shared/gap-model.md) · [traversal-state](.claude/skills/shared/traversal-state.md)
 
 ## How it runs
-Claude is the runtime. It reads the orchestrator + worker skills (markdown) and reasons in neutral terms; **adapters** tell it which real tools satisfy each canonical capability. An adapter is an `ADAPTER.md` (instructions calling real CLIs/tools) plus optional bundled `scripts/` where the read-source fallback is not precise enough (mainly `build_call_graph`, sometimes `trace_data_state_flow`). Adapters live under each capability owner and are bound per Stack Profile (language/source) or per boundary kind (data store / service / event). *No adapters are implemented yet — runs currently operate in degraded/fallback mode and record capability gaps accordingly.*
+Claude is the runtime. It reads the orchestrator + worker skills (markdown) and reasons in neutral terms; **adapters** tell it which real tools satisfy each canonical capability. An adapter is an `ADAPTER.md` (instructions calling real CLIs/tools) plus optional bundled `scripts/` where the read-source fallback is not precise enough (mainly `build_call_graph`). Adapters live in [`adapters/`](adapters/) and are bound per Stack Profile (language/source) or per boundary kind (data store / service / event). See the [adapter registry](adapters/README.md).
+
+**Reference adapters shipped:**
+- [`java-maven`](adapters/java-maven/ADAPTER.md) — language/build; Tier-1 (`mvn`/`jdeps`/`javap`) + Tier-2 [`java_ast.py`](adapters/java-maven/scripts/java_ast.py) (source model, heuristic call graph, entry points via `javalang`).
+- [`relational-db`](adapters/relational-db/ADAPTER.md) — `inspect_datastore`; live introspection ([Postgres reference SQL](adapters/relational-db/scripts/postgres_introspect.sql), Oracle/SQL Server/MySQL equivalents) or offline DDL/migration parsing, plus reference-data value resolution.
+- [`generic-fallback`](adapters/generic-fallback/ADAPTER.md) — always-on; partial evidence via Read/Grep for any capability with no specialized adapter, with mandatory `⊘ CAPABILITY` gaps.
+
+Still binding to generic-fallback until built: `resolve_service_target` (REST/gRPC), `resolve_event_target` (Kafka), and non-Java language adapters.
 
 ## Prompting
 
@@ -90,4 +97,4 @@ The structured artifacts are the canonical current-state truth; Markdown reports
 Design originates from the Notion page *"Current Behavior Discovery — 8-Skill Architecture & Claude Wiring"*. Keep this repo and that page in sync.
 
 ## Status
-Skill definitions scaffolded. **Next:** implement the first reference adapters — a language/build adapter for the primary stack, a data-store adapter, plus the generic fallback adapter — so capabilities run for real instead of in fallback.
+Skills scaffolded + first reference adapters shipped (java-maven, relational-db, generic-fallback). **Next:** cross-cutting resolvers (`resolve_service_target` for REST/gRPC, `resolve_event_target` for Kafka), then additional language adapters (.NET, Node/TS, Python) as boundaries demand. First end-to-end validation run recommended against a representative Java/Maven operation.
