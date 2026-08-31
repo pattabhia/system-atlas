@@ -35,8 +35,14 @@ Require a decision/condition + domain-relevant consequence + business context. N
 ## Branch reconciliation (completeness)
 Consume the branch inventory (`java_ast.py --branches`) for every reachable method and **account for each arm**: map it to a decision, a behavior family, a business rule, or mark it explicitly trivial (presence guard / log-only). Branch enumeration is mechanical; classification is the reasoning. This routinely surfaces rules hidden inside helper methods (e.g. a password-composition formula in length-check branches) that a flow-level pass records only implicitly. Emit a branch-completeness reconciliation; never leave an arm unaccounted.
 
+## Code catalogs (error / status / reason / endpoint codes)
+Enum constants that carry domain semantics — error codes, status codes, reason codes, API endpoint names — are **catalogued as a set**, not left scattered across the catch blocks and setters that reference them. Extract them mechanically (`java_ast.py --errorcodes`) with their code + message literals, then record each code's meaning and where it is raised/written. This is the authoritative semantic source for status_comment values and thrown-exception codes. Flag anomalies the extraction reveals (e.g. two constants sharing one code). Emit an `error-code-catalog`.
+
+## Silent-failure behavior (exception handling)
+Exception handling IS behavior. Consume the handler analysis (`java_ast.py --exceptions`) and treat every **swallowing** catch (log-only, empty, or return null/false/default) as a materially-distinct outcome: the operation continues or reports success while an error is hidden. Each swallow becomes a behavior observation and, where it changes the operation's terminal outcome, a **behavior family** (hand to Skill 07 → projected to BDD by Skill 08). Do not discover these by ad-hoc reading — they are enumerated for you; classify and attach them. Emit an `exception-analysis`.
+
 ## Outputs
-Decision/effect catalog; rule candidates; confirmed rules; semantic resolutions; value lineage; semantic evidence; unresolved meanings and ambiguities.
+Decision/effect catalog; rule candidates; confirmed rules; semantic resolutions; value lineage; error-code catalog; exception/silent-failure analysis; semantic evidence; unresolved meanings and ambiguities.
 
 ## Guardrail
 LLM confidence is not evidence. Every semantic claim must state why it is believed.

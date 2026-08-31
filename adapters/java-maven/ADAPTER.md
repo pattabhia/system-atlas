@@ -94,7 +94,21 @@ Uses **resolved + interface-override edges** (Stage B emits `dispatch:"override"
 ```bash
 python3 scripts/java_ast.py --root <source-root> --branches > branches.json
 ```
-Emits `if`/`switch`/`ternary`/`catch`/loop constructs with their arms and line numbers, per method. Skill 06 accounts for every arm (decision / behavior family / business rule / trivial) — a missed arm is a missed behavior *variant*. `run-coverage.sh` runs this as its final step.
+Emits `if`/`switch`/`ternary`/`catch`/loop constructs with their arms and line numbers, per method. Skill 06 accounts for every arm (decision / behavior family / business rule / trivial) — a missed arm is a missed behavior *variant*.
+
+## exception analysis / silent-failure detection
+```bash
+python3 scripts/java_ast.py --root <source-root> --exceptions > exceptions.json
+```
+Classifies each catch handler (rethrow-or-wrap / swallow-log-only / swallow-empty / swallow-return-null-false / recover-or-other) and flags **silent-failure** handlers — swallowed exceptions that hide behavior (an operation that reports success while an error is logged-and-dropped). Feeds Skill 06/07: each swallow is a behavior, often a distinct outcome/family.
+
+## error/status code catalog
+```bash
+python3 scripts/java_ast.py --root <source-root> --errorcodes > errorcodes.json
+```
+Extracts enum constants (error/status/reason/endpoint codes) with their `code` + `message` literals — e.g. `PDF_NOT_GENERATED("DCS-020","…")`. The authoritative semantic source for status_comment values and thrown codes; surfaces anomalies (duplicate codes). Feeds Skill 06's semantic resolution.
+
+`run-coverage.sh` runs all of these (model → call graph → reachability → branches → exceptions → errorcodes) as the per-run analysis substrate.
 
 ## trace_data_state_flow — Tier 2 (script + reasoning)
 Use `source-model.json` + `callgraph.json` to follow reads/writes to fields, parameters, persisted entities and returned values along a path. Record state transitions and data lineage with provenance. Where dispatch is ambiguous, branch the path and attach an ambiguity gap rather than picking one.

@@ -359,6 +359,140 @@ def build_branches(root):
                        "branches": tot_b, "arms": tot_a, "errors": len(errors)}}
 
 
+def _stmts(block):
+    return [c for c in block.children if c.is_named] if block is not None else []
+
+
+def classify_catch(catch_node):
+    """Classify a catch handler's body — the recurring 'silent failure' axis that
+    error-handling reconstruction must surface (swallowed exceptions hide behavior)."""
+    body = None
+    for c in catch_node.children:
+        if c.type == "block":
+            body = c; break
+    if body is None:
+        return "unknown", False
+    has_throw = has_return_null = has_return_other = has_log = has_other = False
+    # inspect only TOP-LEVEL statements of the catch block (not nested arg calls,
+    # so a log call whose argument is a method invocation still counts as logging)
+    stmts = [c for c in body.children if c.is_named]
+    empty = len(stmts) == 0
+    for s in stmts:
+        t = s.type
+        if t == "throw_statement":
+            has_throw = True
+        elif t == "return_statement":
+            rv = " ".join((txt(s) or "").split()).rstrip(";")
+            if rv.endswith("null") or rv.endswith("false") or rv.endswith("0") or rv == "return":
+                has_return_null = True
+            else:
+                has_return_other = True
+        elif t == "expression_statement":
+            inner = next((c for c in s.children if c.is_named), None)
+            if inner is not None and inner.type == "method_invocation":
+                q = txt(field(inner, "object")) or ""
+                mm = (txt(field(inner, "name")) or "").lower()
+                if "log" in q.lower() or mm in ("error", "warn", "info", "debug", "trace"):
+                    has_log = True
+                else:
+                    has_other = True
+            else:
+                has_other = True
+        else:  # if/for/try/local-var/assignment doing real recovery work
+            has_other = True
+    if has_throw:
+        return "rethrow-or-wrap", False
+    if has_other or has_return_other:
+        return "recover-or-other", False
+    if has_return_null:
+        return "swallow-return-null/false", True
+    if empty:
+        return "swallow-empty", True
+    if has_log:
+        return "swallow-log-only", True
+    return "swallow-empty", True
+
+
+def build_exceptions(root):
+    """Per-method catch-handler analysis. Flags SILENT-FAILURE handlers (swallow: log-only,
+    empty, or return null/false) — a top modernization concern that hides real behavior."""
+    parser = make_parser()
+    methods_out, errors = [], []
+    for path in iter_java_files(root):
+        tree, err = parse_file(parser, path)
+        if err:
+            errors.append(err); continue
+        pkg, _ = file_package_imports(tree.root_node)
+        for cls in (n for n in walk(tree.root_node) if n.type in TYPE_KINDS):
+            cname = type_name(cls)
+            for m in methods_of(cls):
+                mname = txt(field(m, "name"))
+                qual = f"{pkg}.{cname}#{mname}" if pkg else f"{cname}#{mname}"
+                body = field(m, "body")
+                if body is None:
+                    continue
+                handlers = []
+                for n in walk(body):
+                    if n.type == "catch_clause":
+                        et = ""
+                        for cc in walk(field(n, "parameter") or n):
+                            if cc.type in ("catch_type", "type_identifier", "union_type"):
+                                et = " ".join((txt(cc) or "").split()); break
+                        kind, silent = classify_catch(n)
+                        handlers.append({"line": _line(n), "exception": et or "?",
+                                         "handling": kind, "silent_failure": silent})
+                if handlers:
+                    methods_out.append({"method": qual, "file": path, "handlers": handlers})
+    silent = [(m["method"], h) for m in methods_out for h in m["handlers"] if h["silent_failure"]]
+    return {"ok": True, "capability": "exception_analysis", "parser": "tree-sitter-java",
+            "root": root, "methods": methods_out, "parse_errors": errors,
+            "silent_failures": [{"method": mth, **h} for mth, h in silent],
+            "counts": {"methods_with_catches": len(methods_out),
+                       "handlers": sum(len(m["handlers"]) for m in methods_out),
+                       "silent_failures": len(silent), "errors": len(errors)}}
+
+
+def build_errorcodes(root):
+    """Extract enum constants (error/status/reason codes) with their literal arguments —
+    e.g. DigitalCardServiceErrorCodes.PDF_NOT_GENERATED("code","message"). These carry
+    domain semantics (Skill 06) and are the values written to status_comment / raised in
+    exceptions; catalog them instead of leaving them scattered across catch blocks."""
+    parser = make_parser()
+    enums, errors = [], []
+    for path in iter_java_files(root):
+        tree, err = parse_file(parser, path)
+        if err:
+            errors.append(err); continue
+        pkg, _ = file_package_imports(tree.root_node)
+        for decl in (n for n in walk(tree.root_node) if n.type == "enum_declaration"):
+            ename = type_name(decl)
+            body = field(decl, "body")
+            if body is None:
+                continue
+            consts = []
+            for ec in (c for c in walk(body) if c.type == "enum_constant"):
+                cname = txt(field(ec, "name"))
+                args = []
+                al = field(ec, "arguments")
+                if al is not None:
+                    for a in al.children:
+                        if a.type in ("string_literal", "decimal_integer_literal",
+                                      "character_literal", "true", "false"):
+                            v = txt(a)
+                            if a.type == "string_literal":
+                                v = v[1:-1] if v and len(v) >= 2 else v
+                            args.append(v)
+                consts.append({"name": cname, "args": args})
+            if consts:
+                enums.append({"enum": f"{pkg}.{ename}" if pkg else ename,
+                              "file": path, "constants": consts})
+    return {"ok": True, "capability": "code_catalog", "parser": "tree-sitter-java",
+            "root": root, "enums": enums, "parse_errors": errors,
+            "counts": {"enums": len(enums),
+                       "constants": sum(len(e["constants"]) for e in enums),
+                       "errors": len(errors)}}
+
+
 def find_entrypoints(root):
     parser = make_parser()
     hits, errors = [], []
@@ -397,6 +531,8 @@ def main():
     g.add_argument("--callgraph", action="store_true")
     g.add_argument("--entrypoints", action="store_true")
     g.add_argument("--branches", action="store_true")
+    g.add_argument("--exceptions", action="store_true")
+    g.add_argument("--errorcodes", action="store_true")
     args = ap.parse_args()
 
     if not os.path.isdir(args.root):
@@ -409,6 +545,10 @@ def main():
         result = build_callgraph(args.root)
     elif args.branches:
         result = build_branches(args.root)
+    elif args.exceptions:
+        result = build_exceptions(args.root)
+    elif args.errorcodes:
+        result = build_errorcodes(args.root)
     else:
         result = find_entrypoints(args.root)
     json.dump(result, sys.stdout, indent=2)

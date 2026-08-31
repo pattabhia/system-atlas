@@ -34,8 +34,14 @@ echo "[3/4] reachability closure…"
 "$PY" "$HERE/reachability.py" --model "$OUT/source-model.json" \
      --callgraph "$OUT/callgraph.json" --entry "$ENTRY" > "$OUT/reachability.json"
 
-echo "[4/4] branch inventory (branch-completeness)…"
+echo "[4/6] branch inventory (branch-completeness)…"
 "$PY" "$HERE/java_ast.py" --root "$SRC" --branches > "$OUT/branches.json"
+
+echo "[5/6] exception handlers (silent-failure detection)…"
+"$PY" "$HERE/java_ast.py" --root "$SRC" --exceptions > "$OUT/exceptions.json"
+
+echo "[6/6] error/status code catalog…"
+"$PY" "$HERE/java_ast.py" --root "$SRC" --errorcodes > "$OUT/errorcodes.json"
 
 "$PY" - "$OUT/reachability.json" <<'PYEOF'
 import json,sys
@@ -47,6 +53,11 @@ print("→ Skill 04 must now VISIT every reachable method and CLASSIFY the unrea
 b=json.load(open(sys.argv[1].replace('reachability.json','branches.json')))
 bc=b["counts"]
 print(f"→ branch-completeness: {bc['branches']} branches / {bc['arms']} arms across "
-      f"{bc['methods_with_branches']} methods — Skill 06 must reconcile each branch "
-      "(covered decision / business rule / trivial), never silently skip an arm.")
+      f"{bc['methods_with_branches']} methods — Skill 06 must reconcile each branch arm.")
+ex=json.load(open(sys.argv[1].replace('reachability.json','exceptions.json')))
+print(f"→ silent-failure handlers: {ex['counts']['silent_failures']} of {ex['counts']['handlers']} "
+      "catch blocks swallow (log-only/empty/return-null) — each is a behavior (Skill 06/07), not noise.")
+ec=json.load(open(sys.argv[1].replace('reachability.json','errorcodes.json')))
+print(f"→ code catalog: {ec['counts']['constants']} enum constants across {ec['counts']['enums']} "
+      "enums (error/status/reason/endpoint codes) — semantic evidence for Skill 06.")
 PYEOF
