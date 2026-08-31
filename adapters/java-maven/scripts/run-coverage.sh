@@ -19,11 +19,17 @@ echo "[1/7] source model (tree-sitter)…"
 "$PY" "$HERE/java_ast.py" --root "$SRC" --model > "$OUT/source-model.json"
 
 echo "[2/7] call graph…"
+# On git-bash/MSYS (Windows), native java.exe needs Windows-form paths; MSYS otherwise
+# mangles POSIX/comma-list args. cygpath -m converts; no-op elsewhere. Convert each --src
+# root (comma-separated) so multi-root is honored, plus the jar and classpath file.
+winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+winsrc() { local out= p IFS=,; for p in $1; do out="$out,$(winpath "$p")"; done; printf '%s' "${out#,}"; }
 if [ -f "$JAR" ]; then
+  JARW="$(winpath "$JAR")"; SRCW="$(winsrc "$SRC")"
   if [ -n "$CP" ] && [ -f "$CP" ]; then
-    java -jar "$JAR" --src "$SRC" --classpath "$CP" > "$OUT/callgraph.json"
+    java -jar "$JARW" --src "$SRCW" --classpath "$(winpath "$CP")" > "$OUT/callgraph.json"
   else
-    java -jar "$JAR" --src "$SRC" > "$OUT/callgraph.json"
+    java -jar "$JARW" --src "$SRCW" > "$OUT/callgraph.json"
   fi
   echo "      Stage B (symbol-solved + override edges)"
 else

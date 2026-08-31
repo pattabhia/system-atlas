@@ -65,7 +65,11 @@ public class CallGraph {
         if (classpathFile != null) {
             try {
                 String cp = Files.readString(Paths.get(classpathFile)).trim();
-                for (String entry : cp.split("[:;]")) {
+                // Split on the platform path separator only (';' on Windows, ':' on Unix) —
+                // NOT [:;], which shatters Windows entries like C:\a.jar;C:\b.jar on the
+                // drive-letter colon. mvn dependency:build-classpath uses File.pathSeparator.
+                for (String entry : cp.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
+                    entry = entry.trim();
                     if (entry.endsWith(".jar")) {
                         try { solver.add(new JarTypeSolver(entry)); jars++; }
                         catch (Exception e) { errors.add("jar:" + entry + ":" + e); }

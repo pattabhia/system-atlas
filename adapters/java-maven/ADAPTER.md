@@ -74,6 +74,8 @@ java -jar callgraph-jvm/target/callgraph.jar --src <source-root> --classpath cp.
 ```
 Each edge resolves to a fully-qualified `owner_fqn` + method `signature` with `resolved:true` (**PROVEN**). Overloads/inheritance/cross-jar are resolved by the symbol solver. Unresolvable calls stay `resolved:false` — never guessed. Without `--classpath`, intra-project + JDK calls still resolve; cross-jar edges to unbuilt dependencies are reported unresolved (a boundary/version gap, not an invention).
 
+**Windows / git-bash (MSYS) note.** Native `java.exe` needs Windows-form paths; MSYS otherwise mangles POSIX paths and comma-separated `--src` lists (symptom: only a fragment of a multi-root run reaches the jar — a suspiciously low file count). `run-coverage.sh` handles this — it `cygpath -m`-converts the jar, each `--src` root, and the classpath file before invoking java. If you call the jar directly from git-bash, convert the paths yourself (`cygpath -m`); do **not** disable MSYS conversion globally (that breaks `-jar /c/...`). The classpath is split on the platform path separator (`;` on Windows), so `C:\a.jar;C:\b.jar` is parsed correctly.
+
 **Stage A — heuristic (fallback when the jar/classpath is unavailable).**
 ```bash
 python3 scripts/java_ast.py --root <source-root> --callgraph > callgraph.json
