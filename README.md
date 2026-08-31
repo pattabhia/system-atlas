@@ -40,7 +40,7 @@ Three layers ensure it never gets skipped:
 | `tools/seq_diagram.py <callgraph.json> <entry>` | per-operation Mermaid sequence diagram |
 | `tools/characterize.sh <project>` | run the target's own tests as an executed oracle |
 | `adapters/java-maven/scripts/run-coverage.sh <src> "<entries>" <out>` | full per-run analysis substrate (model, call graph, reachability, branches, exceptions, error codes, config) |
-| `tools/smoke/smoke_test.sh` | regression guards on a **non-MOSIP** fixture: interface→impl override edges emit generically, `seq_diagram` infers the package, finalize survives a degraded pack. Run in CI / after install. |
+| `tools/smoke/smoke_test.py` (or `.sh` wrapper) | regression guards on a **non-MOSIP** fixture: interface→impl override edges emit generically, `seq_diagram` infers the package, finalize survives a degraded pack. Portable harness (all file I/O via Python tempfiles). Run in CI / after install. |
 
 ## Design principles
 - **Follow behavior, not repository or technology boundaries.** A repo, module, package, JAR, service or database is not automatically a behavior boundary.
