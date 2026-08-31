@@ -29,6 +29,9 @@ BDD Feature/Scenarios
 Native Characterization Tests
 ```
 
+## Keep BDD in sync with behavior families (re-projection rule)
+The BDD feature is a **projection of the behavior families** — it must be regenerated whenever the family set changes. Later passes routinely add families: **branch-completeness** (Skill 06) frequently surfaces a materially-distinct outcome (e.g. an operation succeeds but a downstream publish silently fails) that must be (a) elevated to a behavior family in Skill 07, then (b) re-projected here as a scenario. Do **not** leave an observation recorded only in the gap registry if it is a distinct outcome — that is a missed scenario. Every family with a business-readable/testable outcome maps to a scenario; computations/formulas (e.g. a password rule) stay in the rule catalog + characterization tests, not Gherkin. Treat "families changed since the feature was written" as a trigger to re-run this skill.
+
 ## Anti-Circularity
 Avoid model predicts expected output → model generates test → test merely confirms its own prediction. Where feasible, the current/legacy implementation provides the executable oracle.
 
