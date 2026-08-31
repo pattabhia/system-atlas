@@ -50,6 +50,14 @@ if command -v mvn >/dev/null 2>&1; then
     && echo "  ✓ callgraph.jar built" || echo "  ! jar build skipped (offline?) — Stage A heuristic still works"
 fi
 
+# 6) smoke test — verify the install works generically (target-leak + portability guards)
+echo "==> smoke test (non-MOSIP fixture)"
+if bash "$ATLAS_HOME/tools/smoke/smoke_test.sh" >/tmp/atlas-smoke.log 2>&1; then
+  echo "  ✓ smoke: PASS"
+else
+  echo "  ! smoke: FAIL — see /tmp/atlas-smoke.log (install may still be usable; investigate before client use)"
+fi
+
 echo
 echo "Done. Restart your Claude Code session so ATLAS_HOME + hook load."
 echo "Then, from ANY repo:   /atlas ./that-repo [OperationName]"
