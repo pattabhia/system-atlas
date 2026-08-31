@@ -41,14 +41,12 @@ def tree(root, prefix="", maxdepth=2, depth=0):
         note = LEGEND.get(name) or OP_LEGEND.get(name) or ""
         lines.append(f"{prefix}{conn}{name}/" + (f"  — {note}" if note else ""))
         sub = os.path.join(root, name)
-        # don't expand every operation; show one as the template
         if name == "03-operations":
             ops = sorted(d for d in os.listdir(sub) if os.path.isdir(os.path.join(sub, d)))
             for j, op in enumerate(ops):
                 oplast = j == len(ops) - 1
                 oc = "    └── " if oplast else "    ├── "
                 lines.append(f"{prefix}{'    ' if last else '│   '}{oc}{op}/")
-            break_note = True
         elif depth < maxdepth:
             lines += tree(sub, prefix + ("    " if last else "│   "), maxdepth, depth + 1)
     return lines
@@ -88,7 +86,7 @@ def main():
     L.append("  human projections/summaries that reference them.")
     L.append("- **Ground truth vs synthesis:** `90-evidence/*.json` is mechanical tool output;")
     L.append("  per-operation `*.yaml/*.md` are runtime synthesis grounded in it (enforced by pack_lint).")
-    open(os.path.join(pack, "MANIFEST.md"), "w").write("\n".join(L) + "\n")
+    open(os.path.join(pack, "MANIFEST.md"), "w", encoding="utf-8").write("\n".join(L) + "\n")
     print(f"wrote {os.path.join(pack, 'MANIFEST.md')} ({len(ops)} operations)")
 
 if __name__ == "__main__":

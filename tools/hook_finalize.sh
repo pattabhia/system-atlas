@@ -7,10 +7,12 @@
 ATLAS="$(cd "$(dirname "$0")/.." && pwd)"
 PY="${ATLAS_PYTHON:-python3}"
 
+# Search roots (portable — no estate-specific literals). ATLAS_BASELINES may point at a
+# custom store; otherwise use the session's project dir and cwd.
 roots=()
+[ -n "${ATLAS_BASELINES:-}" ] && roots+=("$ATLAS_BASELINES")
 [ -n "${CLAUDE_PROJECT_DIR:-}" ] && roots+=("$CLAUDE_PROJECT_DIR/.haiintel/behavior-baselines")
 roots+=("$PWD/.haiintel/behavior-baselines")
-roots+=("$HOME/development/10.HAIINTEL/.haiintel/behavior-baselines")
 
 seen="|"
 for base in "${roots[@]}"; do

@@ -43,7 +43,7 @@ def read(path):
 
 def load_json(path):
     try:
-        return json.load(open(path))
+        return json.load(open(path, encoding="utf-8"))
     except Exception:
         return None
 

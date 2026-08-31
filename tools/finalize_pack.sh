@@ -7,6 +7,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PACK="${1:?pack dir}"; PY="${2:-python3}"
+mkdir -p "$PACK/90-evidence"   # a degraded / non-Java pack may not have created it yet
 
 "$PY" "$HERE/pack_manifest.py" "$PACK"
 "$PY" "$HERE/pack_lint.py" "$PACK" > "$PACK/90-evidence/lint-report.json"; RC=$?

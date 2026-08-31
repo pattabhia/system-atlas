@@ -37,10 +37,23 @@ def main():
     ap.add_argument("entry")
     ap.add_argument("--depth", type=int, default=4)
     ap.add_argument("--title", default=None)
-    ap.add_argument("--project", default="io.mosip.digitalcard")
+    ap.add_argument("--project", default=None,
+                    help="project base package; inferred from the call graph if omitted")
     args = ap.parse_args()
 
-    d = json.load(open(args.callgraph))
+    d = json.load(open(args.callgraph, encoding="utf-8"))
+
+    if not args.project:
+        # infer the dominant in-project package from caller signatures (callers are, by
+        # definition, methods being analyzed — i.e. in-project). No hardcoded literal.
+        import collections as _c
+        pkgs = _c.Counter()
+        for e in d["edges"]:
+            parts = e["caller"].split("(")[0].split(".")
+            if len(parts) >= 4:
+                pkgs[".".join(parts[:3])] += 1
+        args.project = pkgs.most_common(1)[0][0] if pkgs else ""
+        sys.stderr.write(f"[seq_diagram] inferred --project={args.project or '(none)'}\n")
     # adjacency: caller-method-name -> [(callee_owner, callee_method, resolved)]
     adj = {}
     for e in d["edges"]:

@@ -7,17 +7,18 @@
 # Usage:
 #   run-coverage.sh <src-root> "<entry1,entry2,...>" <out-dir> [python] [callgraph-jar] [classpath-file]
 #
-# Outputs into <out-dir>: source-model.json, callgraph.json, reachability.json
+# Outputs into <out-dir>: source-model, callgraph, reachability, branches, exceptions,
+# errorcodes, config (.json each).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="${1:?src root}"; ENTRY="${2:?comma-separated entry method names}"; OUT="${3:?out dir}"
 PY="${4:-python3}"; JAR="${5:-$HERE/../callgraph-jvm/target/callgraph.jar}"; CP="${6:-}"
 mkdir -p "$OUT"
 
-echo "[1/3] source model (tree-sitter)…"
+echo "[1/7] source model (tree-sitter)…"
 "$PY" "$HERE/java_ast.py" --root "$SRC" --model > "$OUT/source-model.json"
 
-echo "[2/3] call graph…"
+echo "[2/7] call graph…"
 if [ -f "$JAR" ]; then
   if [ -n "$CP" ] && [ -f "$CP" ]; then
     java -jar "$JAR" --src "$SRC" --classpath "$CP" > "$OUT/callgraph.json"
@@ -30,14 +31,14 @@ else
   echo "      Stage A (heuristic — build callgraph-jvm for Stage B)"
 fi
 
-echo "[3/4] reachability closure…"
+echo "[3/7] reachability closure…"
 "$PY" "$HERE/reachability.py" --model "$OUT/source-model.json" \
      --callgraph "$OUT/callgraph.json" --entry "$ENTRY" > "$OUT/reachability.json"
 
-echo "[4/6] branch inventory (branch-completeness)…"
+echo "[4/7] branch inventory (branch-completeness)…"
 "$PY" "$HERE/java_ast.py" --root "$SRC" --branches > "$OUT/branches.json"
 
-echo "[5/6] exception handlers (silent-failure detection)…"
+echo "[5/7] exception handlers (silent-failure detection)…"
 "$PY" "$HERE/java_ast.py" --root "$SRC" --exceptions > "$OUT/exceptions.json"
 
 echo "[6/7] error/status code catalog…"

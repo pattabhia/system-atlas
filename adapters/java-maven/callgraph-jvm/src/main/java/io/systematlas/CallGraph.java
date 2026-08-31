@@ -97,21 +97,34 @@ public class CallGraph {
         List<CompilationUnit> cus = new ArrayList<>();
         Map<String, List<String>> implsByType = new HashMap<>();   // ancestorQN -> [implQN...]
         Map<String, Set<String>> methodsByType = new HashMap<>();  // typeQN -> {methodName...}
+        Set<String> inSourceTypes = new HashSet<>();               // every type DECLARED in the parsed source
+        // Pass 1: parse + collect all in-source type QNs (interfaces included) and impl methods.
         for (Path f : files) {
             CompilationUnit cu;
             try { cu = StaticJavaParser.parse(f); }
             catch (Exception e) { parseErrs++; errors.add("parse:" + f + ":" + e.getClass().getSimpleName()); continue; }
             cus.add(cu);
             for (ClassOrInterfaceDeclaration cid : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+                String qn;
+                try { qn = cid.resolve().getQualifiedName(); } catch (Throwable t) { continue; }
+                inSourceTypes.add(qn);
+                if (!cid.isInterface()) {
+                    Set<String> mnames = methodsByType.computeIfAbsent(qn, k -> new HashSet<>());
+                    cid.getMethods().forEach(m -> mnames.add(m.getNameAsString()));
+                }
+            }
+        }
+        // Pass 2: index interface/superclass -> concrete impl, keyed on ANY in-source ancestor
+        // (generic — no hardcoded project package; a literal would silently break every other codebase).
+        for (CompilationUnit cu : cus) {
+            for (ClassOrInterfaceDeclaration cid : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (cid.isInterface()) continue;
                 String implQN;
                 try { implQN = cid.resolve().getQualifiedName(); } catch (Throwable t) { continue; }
-                Set<String> mnames = methodsByType.computeIfAbsent(implQN, k -> new HashSet<>());
-                cid.getMethods().forEach(m -> mnames.add(m.getNameAsString()));
                 try {
                     for (ResolvedReferenceType anc : cid.resolve().getAllAncestors()) {
                         String ancQN = anc.getQualifiedName();
-                        if (ancQN != null && ancQN.startsWith("io.mosip.digitalcard"))
+                        if (ancQN != null && inSourceTypes.contains(ancQN))
                             implsByType.computeIfAbsent(ancQN, k -> new ArrayList<>()).add(implQN);
                     }
                 } catch (Throwable ignore) { /* unresolved ancestor (external) — skip */ }
