@@ -147,6 +147,14 @@ def main():
         for c in sorted(suspect):
             add("WARN", "CODES", f"cited code-like token '{c}' not found in the code catalog.")
 
+    # GAP registries should list OPEN gaps only (resolution history belongs in git)
+    for gf in glob.glob(os.path.join(pack, "**", "*gap*.yaml"), recursive=True):
+        txt = read(gf)
+        if re.search(r"status:\s*resolved\b", txt, re.I) or re.search(r"\bRESOLVED\b", txt):
+            add("WARN", "GAP",
+                f"{os.path.relpath(gf, pack)} contains a resolved gap — a registry is a "
+                "current-state snapshot of OPEN gaps; move resolution history to git.")
+
     # report
     fails = [f for f in findings if f["severity"] == "FAIL"]
     warns = [f for f in findings if f["severity"] == "WARN"]
