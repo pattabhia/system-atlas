@@ -4,6 +4,51 @@
 
 > Skills understand behavior. Adapters understand technology. The orchestrator understands routing.
 
+## Usage
+
+### Install (once) — makes it available in any repo
+The skills and the `/atlas` command are directory-scoped by default. To run system-atlas against **any** repo, install them at user level:
+```bash
+# from the system-atlas repo root
+mkdir -p ~/.claude/skills ~/.claude/commands
+cp -R .claude/skills/*      ~/.claude/skills/
+cp    .claude/commands/*    ~/.claude/commands/
+# tools/ and adapters/ are referenced by absolute path from the repo; keep the repo at a stable location.
+```
+Python deps for the analyzers (one venv, reused): `pip install tree-sitter tree-sitter-java pyyaml`. Build the Stage-B symbol-solver jar once: `adapters/java-maven/callgraph-jvm/build.sh`.
+
+### Run
+- **Slash command (recommended):**
+  ```
+  /atlas <root-path> [operation-name]
+  ```
+  `/atlas ./some-repo` discovers the stack + operations and reconstructs each; `/atlas ./some-repo CreateAccount` deep-reconstructs one operation.
+- **Or invoke the skill directly:** `/current-behavior-orchestrator` and describe the scope. The orchestrator is the **single entry point** — it routes the 8 worker skills (as subagents) and binds adapters by stack profile / boundary kind. (All 9 skills are registered, but workers are marked "routed by the orchestrator", so a top-level request lands on the orchestrator.)
+
+### Output
+Packs are written to `<workspace-root>/.haiintel/behavior-baselines/<project-id>/` — outside the analyzed repo. Start reading at each pack's `MANIFEST.md` (auto-generated) → `application-behavior-summary.md`.
+
+### Guaranteed finalize (manifest + lint) on every run
+Three layers ensure it never gets skipped:
+1. The orchestrator's Final Aggregation runs `tools/finalize_pack.sh <pack>` (emits `MANIFEST.md`, runs the self-consistency lint gate; FAIL blocks completion).
+2. `/atlas` ends with the same finalize.
+3. A **Stop hook** (`tools/hook_finalize.sh`) finalizes any pack changed since its last manifest whenever a session stops — idempotent, non-blocking. Wire it in `~/.claude/settings.json`:
+   ```json
+   { "hooks": { "Stop": [ { "hooks": [
+     { "type": "command", "command": "<abs-path>/system-atlas/tools/hook_finalize.sh" }
+   ] } ] } }
+   ```
+
+### Tools you can run standalone (on any pack / repo)
+| Tool | Purpose |
+|------|---------|
+| `tools/finalize_pack.sh <pack>` | emit MANIFEST.md + run lint gate |
+| `tools/pack_lint.py <pack>` | self-consistency + evidence-grounding lint (families↔BDD, silent-failures, reachable-grounded, codes-in-catalog, open-gaps-only) |
+| `tools/pack_manifest.py <pack>` | (re)generate the root MANIFEST.md |
+| `tools/seq_diagram.py <callgraph.json> <entry>` | per-operation Mermaid sequence diagram |
+| `tools/characterize.sh <project>` | run the target's own tests as an executed oracle |
+| `adapters/java-maven/scripts/run-coverage.sh <src> "<entries>" <out>` | full per-run analysis substrate (model, call graph, reachability, branches, exceptions, error codes, config) |
+
 ## Design principles
 - **Follow behavior, not repository or technology boundaries.** A repo, module, package, JAR, service or database is not automatically a behavior boundary.
 - **Unknown is a valid result. Guessing is not.** Every claim carries provenance; unresolved boundaries and unavailable capabilities are recorded as gaps, never hidden.
