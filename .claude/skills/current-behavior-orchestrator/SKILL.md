@@ -126,6 +126,10 @@ Before declaring a pack complete, run the **pack linter** (`tools/pack_lint.py <
 ## Final Aggregation
 Produce project/operation summary, stack profile, capability coverage, artifact/dependency topology, operation catalog where applicable, flow topology, decisions/effects, rule catalog, CBH + Service Context, capability mapping, BDD, native characterization assets where supported, evidence registry, behavior-linked gaps, capability gaps and completeness/confidence dimensions.
 
-Then **emit a root-level `MANIFEST.md`** (`tools/pack_manifest.py <pack-dir>`) so the two-level folder layout (project-level `00–99` + per-operation `01–11`) is self-documenting — a reader never has to hunt for a folder. Regenerate it every run; never hand-edit it. Run the self-consistency gate (`pack_lint.py`) last.
+Then **finalize the pack every run** with a single mandatory step:
+```
+tools/finalize_pack.sh <pack-dir>
+```
+It emits the self-documenting root `MANIFEST.md` (layout is never hunted) and runs the self-consistency lint gate, writing `90-evidence/lint-report.json`. **FAIL findings block completion**; WARN findings are the worklist. Never hand-edit `MANIFEST.md`. A run that has not been finalized is not complete.
 
 See the deliverable structure in [README](../../../README.md).
