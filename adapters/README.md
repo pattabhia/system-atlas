@@ -34,6 +34,7 @@ Every capability result returns, where relevant: capability invoked; target iden
 
 ## Cross-cutting tools (`../tools/`)
 - `pack_lint.py` — self-consistency + evidence-grounding linter (mandatory completion gate).
+- `pack_manifest.py` — emit the pack's root-level `MANIFEST.md` (self-documenting layout; every run).
 - `seq_diagram.py` — per-operation Mermaid sequence diagram from the resolved call graph.
 - `characterize.sh` — run the target's own tests as an executed oracle (Skill 08).
 
