@@ -109,8 +109,11 @@ def main():
     # REACH grounding
     rj = load_json(os.path.join(ev, "reachability.json"))
     if rj:
-        flowtext = "\n".join(read(p) for p in glob.glob(os.path.join(ops_dir, "**", "*.*"), recursive=True)
-                             if p.endswith((".yaml", ".md", ".mmd")))
+        # grounding = operation artifacts + the coverage proof (which lists every visited method)
+        ground_files = [p for p in glob.glob(os.path.join(ops_dir, "**", "*.*"), recursive=True)
+                        if p.endswith((".yaml", ".md", ".mmd"))]
+        ground_files += glob.glob(os.path.join(pack, "**", "coverage.yaml"), recursive=True)
+        flowtext = "\n".join(read(p) for p in ground_files)
         missing = []
         for m in rj.get("reachable", []):
             name = m["method"]
