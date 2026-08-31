@@ -6,16 +6,13 @@
 
 ## Usage
 
-### Install (once) — makes it available in any repo
-The skills and the `/atlas` command are directory-scoped by default. To run system-atlas against **any** repo, install them at user level:
+### Install (once per machine) — clone anywhere, then run the installer
 ```bash
-# from the system-atlas repo root
-mkdir -p ~/.claude/skills ~/.claude/commands
-cp -R .claude/skills/*      ~/.claude/skills/
-cp    .claude/commands/*    ~/.claude/commands/
-# tools/ and adapters/ are referenced by absolute path from the repo; keep the repo at a stable location.
+git clone https://github.com/pattabhia/system-atlas
+cd system-atlas
+./install.sh          # self-locating; works wherever you cloned it
 ```
-Python deps for the analyzers (one venv, reused): `pip install tree-sitter tree-sitter-java pyyaml`. Build the Stage-B symbol-solver jar once: `adapters/java-maven/callgraph-jvm/build.sh`.
+`install.sh` is **location-independent**: it detects its own path, copies the skills + `/atlas` command to `~/.claude/`, sets `env.ATLAS_HOME` (the absolute path to this clone) in `~/.claude/settings.json`, registers the Stop hook with that absolute path, installs the Python deps, and builds the Stage-B jar. Everything the skills/command run is referenced via `$ATLAS_HOME`, so it works from any repo regardless of where the client cloned system-atlas. **Restart the Claude Code session** afterward so `ATLAS_HOME` + the hook load.
 
 ### Run
 - **Slash command (recommended):**
@@ -32,12 +29,7 @@ Packs are written to `<workspace-root>/.haiintel/behavior-baselines/<project-id>
 Three layers ensure it never gets skipped:
 1. The orchestrator's Final Aggregation runs `tools/finalize_pack.sh <pack>` (emits `MANIFEST.md`, runs the self-consistency lint gate; FAIL blocks completion).
 2. `/atlas` ends with the same finalize.
-3. A **Stop hook** (`tools/hook_finalize.sh`) finalizes any pack changed since its last manifest whenever a session stops — idempotent, non-blocking. Wire it in `~/.claude/settings.json`:
-   ```json
-   { "hooks": { "Stop": [ { "hooks": [
-     { "type": "command", "command": "<abs-path>/system-atlas/tools/hook_finalize.sh" }
-   ] } ] } }
-   ```
+3. A **Stop hook** (`$ATLAS_HOME/tools/hook_finalize.sh`, wired by `install.sh`) finalizes any pack changed since its last manifest whenever a session stops — idempotent, non-blocking.
 
 ### Tools you can run standalone (on any pack / repo)
 | Tool | Purpose |

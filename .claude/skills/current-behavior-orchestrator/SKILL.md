@@ -126,9 +126,9 @@ Before declaring a pack complete, run the **pack linter** (`tools/pack_lint.py <
 ## Final Aggregation
 Produce project/operation summary, stack profile, capability coverage, artifact/dependency topology, operation catalog where applicable, flow topology, decisions/effects, rule catalog, CBH + Service Context, capability mapping, BDD, native characterization assets where supported, evidence registry, behavior-linked gaps, capability gaps and completeness/confidence dimensions.
 
-Then **finalize the pack every run** with a single mandatory step:
+Then **finalize the pack every run** with a single mandatory step (`$ATLAS_HOME` is the absolute path to the system-atlas install, set by `install.sh`):
 ```
-tools/finalize_pack.sh <pack-dir>
+"$ATLAS_HOME/tools/finalize_pack.sh" <pack-dir>
 ```
 It emits the self-documenting root `MANIFEST.md` (layout is never hunted) and runs the self-consistency lint gate, writing `90-evidence/lint-report.json`. **FAIL findings block completion**; WARN findings are the worklist. Never hand-edit `MANIFEST.md`. A run that has not been finalized is not complete.
 
