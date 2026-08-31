@@ -67,6 +67,34 @@ def main():
         finally:
             os.unlink(tmp.name)
 
+    # GUARD 4 — multi-module: Stage-B must root a type solver at EACH src/main/java, so a
+    # call across modules resolves and emits an override edge. Single-repo-root rooting
+    # (the bug) yields resolved=0 / override=0. Guards the run-coverage.sh root discovery.
+    if os.path.isfile(JAR):
+        mm = tempfile.mkdtemp()
+        a = os.path.join(mm, "module-a", "src", "main", "java", "com", "x")
+        b = os.path.join(mm, "module-b", "src", "main", "java", "com", "x")
+        os.makedirs(a); os.makedirs(b)
+        open(os.path.join(a, "Repo.java"), "w").write("package com.x; public interface Repo { String find(String id); }")
+        open(os.path.join(b, "RepoImpl.java"), "w").write("package com.x; public class RepoImpl implements Repo { public String find(String id){return \"y\";} }")
+        open(os.path.join(b, "Svc.java"), "w").write("package com.x; public class Svc { private Repo r; public String go(String id){ return r.find(id);} }")
+        roots = []
+        for dp, dn, fn in os.walk(mm):
+            if dp.replace("\\", "/").endswith("src/main/java") and "target" not in dp:
+                roots.append(dp)
+        try:
+            out = subprocess.run(["java", "-jar", JAR, "--src", ",".join(roots)],
+                                 capture_output=True, text=True, check=True).stdout
+            c = json.loads(out)["counts"]
+            if c["override_edges"] >= 1 and c["resolved"] >= 1:
+                ok(f"multi-module cross-root resolution works [resolved={c['resolved']}, override={c['override_edges']}]")
+            else:
+                bad(f"multi-module resolution FAILED (type-solver rooting regression) resolved={c['resolved']} override={c['override_edges']}")
+        except Exception as e:
+            bad(f"GUARD 4 could not run: {type(e).__name__}: {e}")
+        finally:
+            shutil.rmtree(mm, ignore_errors=True)
+
     # GUARD 3 — portability: finalize survives a degraded pack with no 90-evidence/ dir.
     if have("bash"):
         d = tempfile.mkdtemp()

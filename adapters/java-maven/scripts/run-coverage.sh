@@ -23,9 +23,19 @@ echo "[2/7] call graph…"
 # mangles POSIX/comma-list args. cygpath -m converts; no-op elsewhere. Convert each --src
 # root (comma-separated) so multi-root is honored, plus the jar and classpath file.
 winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
-winsrc() { local out= p IFS=,; for p in $1; do out="$out,$(winpath "$p")"; done; printf '%s' "${out#,}"; }
+# Multi-module: Stage-B needs one JavaParserTypeSolver PER real source root, else
+# com.foo.Bar resolves against the wrong base (symptom: low resolution %, 0 override
+# edges). Discover every src/main/java under SRC (excluding target/); fall back to SRC.
+discover_roots() {
+  local rs; rs=$(find "$1" -type d -path '*/src/main/java' -not -path '*/target/*' 2>/dev/null | sort -u)
+  [ -n "$rs" ] && printf '%s\n' "$rs" || printf '%s\n' "$1"
+}
 if [ -f "$JAR" ]; then
-  JARW="$(winpath "$JAR")"; SRCW="$(winsrc "$SRC")"
+  JARW="$(winpath "$JAR")"
+  SRCW=""; while IFS= read -r r; do [ -n "$r" ] && SRCW="$SRCW,$(winpath "$r")"; done <<EOF
+$(discover_roots "$SRC")
+EOF
+  SRCW="${SRCW#,}"
   if [ -n "$CP" ] && [ -f "$CP" ]; then
     java -jar "$JARW" --src "$SRCW" --classpath "$(winpath "$CP")" > "$OUT/callgraph.json"
   else
