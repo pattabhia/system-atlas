@@ -120,6 +120,9 @@ Write the deliverable pack to a dedicated, workspace-scoped store **outside** th
 
 `<workspace-root>` is the directory holding the analyzed repos (e.g. `10.HAIINTEL`). Use an explicit `<output path>` when the run prompt supplies one; otherwise default to the path above. Never write the pack inside the target repo by default.
 
+## Self-consistency gate (mandatory before completion)
+Before declaring a pack complete, run the **pack linter** (`tools/pack_lint.py <pack-dir>`). It checks the *synthesized* artifacts against the *mechanical* evidence: every behavior family maps to a BDD scenario, every silent-failure handler is addressed, every reachable method is grounded in an artifact, every cited code exists in the catalog, every operation has its required files, and every YAML parses. **FAIL findings block completion; WARN findings are the worklist.** This is what keeps synthesis honest — a claim the evidence doesn't support, or an evidence item the pack ignores, is caught mechanically instead of by hand. Distinction to preserve: `90-evidence/*` is tool-generated ground truth; the per-operation `*.yaml/*.md` are runtime synthesis grounded in it — the linter enforces that grounding.
+
 ## Final Aggregation
 Produce project/operation summary, stack profile, capability coverage, artifact/dependency topology, operation catalog where applicable, flow topology, decisions/effects, rule catalog, CBH + Service Context, capability mapping, BDD, native characterization assets where supported, evidence registry, behavior-linked gaps, capability gaps and completeness/confidence dimensions.
 

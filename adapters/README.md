@@ -29,5 +29,16 @@ Adapters are the technology-specific layer behind the [Stack Adapter Contract](.
 ## Adapter output contract
 Every capability result returns, where relevant: capability invoked; target identity; version; source location; resolution status; evidence/provenance; evidence level; discovered next targets; explicit limitations; and unsupported/fallback status. See the [contract](../.claude/skills/shared/stack-adapter-contract.md#adapter-output-contract).
 
+## Language adapter scaffolds
+[`dotnet`](dotnet/ADAPTER.md), [`node`](node/ADAPTER.md), [`python`](python/ADAPTER.md) — capability contracts + tooling maps defined (Roslyn / ts-morph / ast+LibCST), implementations pending. Until built, these bind to generic-fallback with a recorded capability gap.
+
+## Cross-cutting tools (`../tools/`)
+- `pack_lint.py` — self-consistency + evidence-grounding linter (mandatory completion gate).
+- `seq_diagram.py` — per-operation Mermaid sequence diagram from the resolved call graph.
+- `characterize.sh` — run the target's own tests as an executed oracle (Skill 08).
+
+## java-maven analysis modes (all via `java_ast.py --<mode>`)
+`--model --callgraph --entrypoints --branches --exceptions --errorcodes --config`; plus `reachability.py`, `lineage.py`, `idempotency.py`. `run-coverage.sh` chains the per-run substrate.
+
 ## Not yet implemented
-Additional language adapters: .NET, Node/TS, Python (each owning the 8 language/source capabilities for its Stack Profile). Additional data stores: NoSQL/document, other RDBMS dialects as first-class (dialect equivalents are documented inline in relational-db today). Until present, these bind to generic-fallback with a recorded capability gap.
+Additional data stores as first-class adapters (NoSQL/document, other RDBMS dialects — dialect notes are inline in relational-db today); full language-adapter implementations (scaffolds above).

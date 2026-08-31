@@ -24,6 +24,7 @@ LIMITATIONS (must be surfaced, never hidden):
 import argparse
 import json
 import os
+import re
 import sys
 
 try:
@@ -452,6 +453,44 @@ def build_exceptions(root):
                        "silent_failures": len(silent), "errors": len(errors)}}
 
 
+def build_config(root):
+    """Catalog config keys the code reads (@Value) with their defaults and the field they bind —
+    config-driven behavior. Feature flags gate behavior variants; surface them as a set."""
+    parser = make_parser()
+    entries, errors = [], []
+    VAL = re.compile(r'\$\{([^:}]+)(?::([^}]*))?\}')
+    for path in iter_java_files(root):
+        tree, err = parse_file(parser, path)
+        if err:
+            errors.append(err); continue
+        pkg, _ = file_package_imports(tree.root_node)
+        for cls in (n for n in walk(tree.root_node) if n.type in TYPE_KINDS):
+            cname = type_name(cls)
+            for fd in (n for n in walk(cls) if n.type == "field_declaration"):
+                anns = [a for a in walk(fd) if a.type in ("annotation", "marker_annotation")]
+                ftype = txt(field(fd, "type"))
+                fname = None
+                for vd in fd.children:
+                    if vd.type == "variable_declarator":
+                        fname = txt(field(vd, "name"))
+                for a in anns:
+                    nm = field(a, "name")
+                    if nm is None or (txt(nm) or "").split(".")[-1] != "Value":
+                        continue
+                    raw = txt(a) or ""
+                    m = VAL.search(raw)
+                    if m:
+                        key, default = m.group(1).strip(), (m.group(2) if m.group(2) is not None else None)
+                        is_flag = (ftype in ("boolean", "Boolean")) or (default in ("true", "false"))
+                        entries.append({"key": key, "default": default, "type": ftype,
+                                        "field": f"{cname}.{fname}", "file": path,
+                                        "feature_flag": is_flag})
+    flags = [e for e in entries if e["feature_flag"]]
+    return {"ok": True, "capability": "resolve_configuration", "parser": "tree-sitter-java",
+            "root": root, "config": entries, "feature_flags": flags, "parse_errors": errors,
+            "counts": {"keys": len(entries), "feature_flags": len(flags), "errors": len(errors)}}
+
+
 def build_errorcodes(root):
     """Extract enum constants (error/status/reason codes) with their literal arguments —
     e.g. DigitalCardServiceErrorCodes.PDF_NOT_GENERATED("code","message"). These carry
@@ -533,6 +572,7 @@ def main():
     g.add_argument("--branches", action="store_true")
     g.add_argument("--exceptions", action="store_true")
     g.add_argument("--errorcodes", action="store_true")
+    g.add_argument("--config", action="store_true")
     args = ap.parse_args()
 
     if not os.path.isdir(args.root):
@@ -549,6 +589,8 @@ def main():
         result = build_exceptions(args.root)
     elif args.errorcodes:
         result = build_errorcodes(args.root)
+    elif args.config:
+        result = build_config(args.root)
     else:
         result = find_entrypoints(args.root)
     json.dump(result, sys.stdout, indent=2)

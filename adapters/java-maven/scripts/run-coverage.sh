@@ -40,8 +40,11 @@ echo "[4/6] branch inventory (branch-completeness)…"
 echo "[5/6] exception handlers (silent-failure detection)…"
 "$PY" "$HERE/java_ast.py" --root "$SRC" --exceptions > "$OUT/exceptions.json"
 
-echo "[6/6] error/status code catalog…"
+echo "[6/7] error/status code catalog…"
 "$PY" "$HERE/java_ast.py" --root "$SRC" --errorcodes > "$OUT/errorcodes.json"
+
+echo "[7/7] config keys + feature flags…"
+"$PY" "$HERE/java_ast.py" --root "$SRC" --config > "$OUT/config.json"
 
 "$PY" - "$OUT/reachability.json" <<'PYEOF'
 import json,sys

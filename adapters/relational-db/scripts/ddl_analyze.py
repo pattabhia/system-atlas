@@ -95,7 +95,17 @@ def main():
         for kw, bucket in (("trigger", triggers), ("function", functions),
                            ("procedure", procedures), ("view", views)):
             for m in re.finditer(rf"create\s+(?:or\s+replace\s+)?{kw}\s+([\w.\"]+)", sql, re.I):
-                bucket.append({kw: m.group(1).replace('"', ""), "file": path})
+                # best-effort body capture: prefer $$-delimited, else up to next ';'
+                tail = sql[m.end():]
+                dd = re.search(r"\$\$(.*?)\$\$", tail, re.S)
+                if dd:
+                    body = dd.group(1).strip()
+                else:
+                    body = tail.split(";", 1)[0].strip()
+                bucket.append({kw: m.group(1).replace('"', ""), "file": path,
+                               "body": body[:4000],
+                               "behavior_relevant": True,
+                               "note": "program object body — traverse as reachable data-store logic (Skill 05->04)"})
     # behavior facts from constraints
     facts = []
     for t in tables:

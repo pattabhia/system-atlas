@@ -35,8 +35,17 @@ The BDD feature is a **projection of the behavior families** — it must be rege
 ## Anti-Circularity
 Avoid model predicts expected output → model generates test → test merely confirms its own prediction. Where feasible, the current/legacy implementation provides the executable oracle.
 
+## Characterization execution (the oracle)
+Prefer an **executed** oracle over asserted values: run the target's own tests (`tools/characterize.sh <project>`), capturing the current implementation's actual outcomes. When the build cannot run (offline, missing deps/DB/services), that is the honest **not-executed** result → record capability gap CG-04 and keep structural + BDD verification; never fabricate expected values.
+
+## Self-consistency gate
+End every verification by running `tools/pack_lint.py <pack-dir>`. FAIL findings block; WARN findings are the worklist. The linter is what makes the synthesized deliverables trustworthy against the mechanical evidence (families↔BDD, silent-failures addressed, reachable methods grounded, codes in catalog).
+
+## Sequence views
+Generate a per-operation Mermaid sequence diagram from the resolved call graph (`tools/seq_diagram.py <callgraph.json> <entry>`), showing collaborator interactions and external boundaries — a projection like the flow graph, useful for review.
+
 ## Outputs
-BDD feature files; native characterization tests where feasible; verification evidence; traversal/semantic/verification coverage; confidence dimensions; final unresolved gaps.
+BDD feature files; native characterization tests where feasible; sequence diagrams; lint report; verification evidence; traversal/semantic/verification coverage; confidence dimensions; final unresolved gaps.
 
 ## Guardrail
 Do not fabricate semantic BDD steps beyond the evidence level of the reconstructed behavior.
