@@ -24,12 +24,13 @@ It dumps tables + columns + types + nullability, primary/foreign keys, views (`p
 **MySQL/MariaDB:** `information_schema.*`, `SHOW CREATE TABLE|VIEW|PROCEDURE|FUNCTION|TRIGGER`.
 
 ### 2. Offline / no-access fallback (contract only, L2)
-If there is no DB connection, resolve from DDL and migration sources in the repo:
+If there is no DB connection, run the bundled DDL analyzer over the repo's SQL:
 ```bash
-find . -path '*/db/migration/*' -o -name '*.sql' -o -name 'schema*.sql' \
-  -o -path '*flyway*' -o -path '*liquibase*'
+python3 scripts/ddl_analyze.py <db-scripts-dir> [<upgrade-scripts-dir> ...] > datastore.json
 ```
-Parse `CREATE TABLE/VIEW/FUNCTION/PROCEDURE/TRIGGER` and `ALTER` statements textually. Mark objects **L2 (contract)** and note that runtime state (actual reference-data rows) is unverified.
+It extracts tables/columns/types, and **turns constraints into behavior facts** — `NOT NULL`/PK → required, `DEFAULT` → default behavior, `varchar(n)` → length limit, FK → referential rule, CHECK → validation rule — plus any triggers/functions/procedures/views. Constraints **are behavior** (the DB enforces them regardless of app code); emit them as data-store rules. Mark objects **L2 (contract)**; live reference-data state stays unverified.
+
+**Absence is a finding:** when no triggers/procedures/functions/views exist, the analyzer says so explicitly (`notes`) — record "data-store logic is declarative-only", never leave it silent/un-inspected.
 
 ### 3. Semantic / value resolution (feeds Skill 06)
 When traversal produced an unresolved persisted value (e.g. a status code written to a column), resolve it here:

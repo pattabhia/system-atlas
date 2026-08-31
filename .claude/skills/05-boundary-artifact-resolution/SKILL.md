@@ -24,8 +24,11 @@ If the target belongs to another stack, identify its Stack Profile and request t
 ## Operating Rule
 **Discover → Resolve → Narrate → Continue.** Do not ask the user at each boundary. If unresolved, capture what is known, create a behavior-linked boundary gap, and continue other reachable paths. Escalate only when human intervention is materially necessary.
 
+## Data-store artifacts carry behavior
+A resolved data store is not just a schema. Extract its **behavior**: constraints (NOT NULL/PK/FK/CHECK/DEFAULT/length) are DB-enforced rules; triggers/procedures/functions/views are executable logic to traverse like any other reachable code (enqueue their bodies back to Skill 04). When no program objects exist, record that **declarative-only** finding explicitly — absence is inspected, not skipped. Offline, use the adapter's DDL analyzer; live, use introspection.
+
 ## Outputs
-Resolved target; artifact identity; version; repository/source location; target Stack Profile; evidence/provenance; or explicit unresolved/ambiguous/version/access boundary.
+Resolved target; artifact identity; version; repository/source location; target Stack Profile; data-store constraint rules + program objects (or explicit declarative-only finding); evidence/provenance; or explicit unresolved/ambiguous/version/access boundary.
 
 ## Handoff
 Resolved implementation returns to Skill 04 for continued traversal.
